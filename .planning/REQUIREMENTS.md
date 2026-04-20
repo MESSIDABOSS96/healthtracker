@@ -126,53 +126,53 @@ Which phases cover which requirements. Populated by the roadmapper.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SETUP-01 | TBD | Pending |
-| SETUP-02 | TBD | Pending |
-| SETUP-03 | TBD | Pending |
-| SETUP-04 | TBD | Pending |
-| SETUP-05 | TBD | Pending |
-| DATA-01 | TBD | Pending |
-| DATA-02 | TBD | Pending |
-| DATA-03 | TBD | Pending |
-| DATA-04 | TBD | Pending |
-| DATA-05 | TBD | Pending |
-| PT-01 | TBD | Pending |
-| PT-02 | TBD | Pending |
-| PT-03 | TBD | Pending |
-| PT-04 | TBD | Pending |
-| PT-05 | TBD | Pending |
-| PT-06 | TBD | Pending |
-| PT-07 | TBD | Pending |
-| FOOD-01 | TBD | Pending |
-| FOOD-02 | TBD | Pending |
-| FOOD-03 | TBD | Pending |
-| FOOD-04 | TBD | Pending |
-| FOOD-05 | TBD | Pending |
-| FOOD-06 | TBD | Pending |
-| FOOD-07 | TBD | Pending |
-| FOOD-08 | TBD | Pending |
-| STEPS-01 | TBD | Pending |
-| STEPS-02 | TBD | Pending |
-| LIFT-01 | TBD | Pending |
-| LIFT-02 | TBD | Pending |
-| STREAK-01 | TBD | Pending |
-| STREAK-02 | TBD | Pending |
-| STREAK-03 | TBD | Pending |
-| STREAK-04 | TBD | Pending |
-| STREAK-05 | TBD | Pending |
-| STREAK-06 | TBD | Pending |
-| STREAK-07 | TBD | Pending |
-| SET-01 | TBD | Pending |
-| SET-02 | TBD | Pending |
-| SET-03 | TBD | Pending |
-| BACK-01 | TBD | Pending |
-| BACK-02 | TBD | Pending |
+| SETUP-01 | Phase 1 | Pending |
+| SETUP-02 | Phase 1 | Pending |
+| SETUP-03 | Phase 1 | Pending |
+| SETUP-04 | Phase 1 | Pending |
+| SETUP-05 | Phase 1 | Pending |
+| DATA-01 | Phase 1 | Pending |
+| DATA-02 | Phase 1 | Pending |
+| DATA-03 | Phase 1 | Pending |
+| DATA-04 | Phase 1 | Pending |
+| DATA-05 | Phase 1 | Pending |
+| PT-01 | Phase 2 | Pending |
+| PT-02 | Phase 2 | Pending |
+| PT-03 | Phase 2 | Pending |
+| PT-04 | Phase 2 | Pending |
+| PT-05 | Phase 2 | Pending |
+| PT-06 | Phase 2 | Pending |
+| PT-07 | Phase 2 | Pending |
+| FOOD-01 | Phase 2 | Pending |
+| FOOD-02 | Phase 2 | Pending |
+| FOOD-03 | Phase 2 | Pending |
+| FOOD-04 | Phase 2 | Pending |
+| FOOD-05 | Phase 2 | Pending |
+| FOOD-06 | Phase 2 | Pending |
+| FOOD-07 | Phase 2 | Pending |
+| FOOD-08 | Phase 2 | Pending |
+| STEPS-01 | Phase 2 | Pending |
+| STEPS-02 | Phase 2 | Pending |
+| LIFT-01 | Phase 2 | Pending |
+| LIFT-02 | Phase 2 | Pending |
+| STREAK-01 | Phase 3 | Pending |
+| STREAK-02 | Phase 3 | Pending |
+| STREAK-03 | Phase 3 | Pending |
+| STREAK-04 | Phase 3 | Pending |
+| STREAK-05 | Phase 3 | Pending |
+| STREAK-06 | Phase 3 | Pending |
+| STREAK-07 | Phase 3 | Pending |
+| SET-01 | Phase 2 | Pending |
+| SET-02 | Phase 2 | Pending |
+| SET-03 | Phase 2 | Pending |
+| BACK-01 | Phase 4 | Pending |
+| BACK-02 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 41 total
-- Mapped to phases: 0 (roadmapper will populate)
-- Unmapped: 41 ⚠️ (expected pre-roadmap)
+- Mapped to phases: 41
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-19*
-*Last updated: 2026-04-19 after initial definition*
+*Last updated: 2026-04-19 after roadmap creation*
