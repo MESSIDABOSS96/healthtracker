@@ -3,6 +3,7 @@ import { AppShell } from './components/AppShell';
 import { TodayScreen } from './routes/TodayScreen';
 import { CalendarScreen } from './routes/CalendarScreen';
 import { SettingsScreen } from './routes/SettingsScreen';
+import { DayDetailScreen } from './routes/DayDetailScreen';
 
 // D-03: HashRouter sidesteps SW navigation-fallback edge cases and supports
 // future deep links (e.g. /#/day/2026-04-20 in Phase 3).
@@ -14,6 +15,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/today" replace />} />
           <Route path="/today" element={<TodayScreen />} />
           <Route path="/calendar" element={<CalendarScreen />} />
+          <Route path="/day/:dayKey" element={<DayDetailScreen />} />
           <Route path="/settings" element={<SettingsScreen />} />
         </Routes>
       </AppShell>
