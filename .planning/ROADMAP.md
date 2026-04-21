@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
   - [x] 01-01-scaffold-shell-PLAN.md — Scaffold Vite 7 + React 19 + TS, Tailwind v4 tokens, shadcn/ui, hash routing, AppShell with bottom tab bar, Today/Calendar/Settings stubs per D-05
   - [x] 01-02-data-layer-PLAN.md — Dexie v1 with 7 stores + append-only migration comment, dayKey.ts with 11:30pm UTC-5 smoke assertion, OPFS photoStore with WebP@80% resize pipeline
-  - [ ] 01-03-pwa-startup-banners-PLAN.md — vite-plugin-pwa (generateSW + autoUpdate), manifest + icons + apple-touch-icon, initApp() startup (persist, lastOpenedAt, SW register), Install + Eviction banners, Settings version line, CLAUDE.md rule #5 update (JPEG→WebP)
+  - [x] 01-03-pwa-startup-banners-PLAN.md — vite-plugin-pwa (generateSW + autoUpdate), manifest + icons + apple-touch-icon, initApp() startup (persist, lastOpenedAt, SW register), Install + Eviction banners, Settings version line, CLAUDE.md rule #5 update (JPEG→WebP)
 **UI hint**: yes
 
 ### Phase 2: Tracking Slices
