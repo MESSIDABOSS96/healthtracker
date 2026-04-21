@@ -5,6 +5,7 @@ import App from './App';
 import './styles/index.css';
 import { wireBeforeInstallPrompt } from './lib/installMode';
 import { LAST_OPENED_KEY, PREV_OPENED_KEY } from './lib/storageKeys';
+import { seedGoalsIfAbsent } from './services/goals.svc';
 
 /**
  * initApp() — RESEARCH.md §6 startup-invariant sequence.
@@ -50,6 +51,14 @@ async function initApp(): Promise<void> {
   // out of production bundles (verified via grep -rl 'runDayKeySmoke' dist/ returning empty).
   if (import.meta.env.DEV) {
     void import('./lib/dayKey.smoke').then(({ runDayKeySmoke }) => runDayKeySmoke());
+  }
+
+  // Step 6.5 — D-13: ensure goals singleton exists before render.
+  // Dexie opens lazily here on first goals.get(); awaited so useLiveQuery fires with data on first paint.
+  try {
+    await seedGoalsIfAbsent();
+  } catch (err) {
+    console.error('[initApp] goals seed failed', err);
   }
 
   // Step 7 — render. Dexie opens lazily on first useLiveQuery (Plan 01-02 db.ts);
