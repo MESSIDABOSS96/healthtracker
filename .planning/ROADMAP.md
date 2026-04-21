@@ -66,8 +66,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 4 plans
   - [x] 03-01-streak-service-PLAN.md — streak.svc.ts (4-table Promise.all range query) + monthMath.ts + calendar/hooks.ts; STREAK-01, STREAK-05, STREAK-07
   - [x] 03-02-daycell-primitive-PLAN.md — DayCell.tsx pure 4-quadrant indicator with alpha-ramp + today-ring; STREAK-02, STREAK-03, STREAK-04
-  - [ ] 03-03-calendar-assembly-PLAN.md — MonthGrid + StreakCount + MonthHeader + WeekdayHeader + StreakCalendar + CalendarScreen body; STREAK-01, STREAK-04, STREAK-05, STREAK-07
-  - [ ] 03-04-day-detail-PLAN.md — /#/day/:dayKey route + DayDetail composer + 3 additive delete service fns; STREAK-06
+  - [x] 03-03-calendar-assembly-PLAN.md — MonthGrid + StreakCount + MonthHeader + WeekdayHeader + StreakCalendar + CalendarScreen body; STREAK-01, STREAK-04, STREAK-05, STREAK-07
+  - [x] 03-04-day-detail-PLAN.md — /#/day/:dayKey route + DayDetail composer + 3 additive delete service fns; STREAK-06
 **UI hint**: yes
 
 ### Phase 4: Backup & Polish
@@ -88,5 +88,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation | 2/3 | In progress | - |
 | 2. Tracking Slices | 0/TBD | Not started | - |
-| 3. Streak Loop | 2/4 | In progress | - |
+| 3. Streak Loop | 4/4 | Verifying | - |
 | 4. Backup & Polish | 0/TBD | Not started | - |
