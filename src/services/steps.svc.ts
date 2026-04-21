@@ -13,3 +13,9 @@ export async function upsertSteps(dayKey: string, count: number): Promise<void> 
 export function getStepsForDay(dayKey: string): Promise<StepEntry | undefined> {
   return db.stepEntries.get(dayKey);
 }
+
+// Phase 3 — past-day delete wired from Day Detail. Single-statement Dexie
+// delete; no transaction wrapper needed (Pitfall #1 not applicable).
+export async function deleteSteps(dayKey: string): Promise<void> {
+  await db.stepEntries.delete(dayKey); // stepEntries.dayKey is PK (natural key)
+}

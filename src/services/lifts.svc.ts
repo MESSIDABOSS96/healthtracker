@@ -31,3 +31,9 @@ export async function setLiftNote(dayKey: string, note: string): Promise<void> {
 export function getLiftForDay(dayKey: string): Promise<LiftCheckin | undefined> {
   return db.liftCheckins.get(dayKey);
 }
+
+// Phase 3 — past-day delete wired from Day Detail. Single-statement Dexie
+// delete; no transaction wrapper needed (Pitfall #1 not applicable).
+export async function deleteLift(dayKey: string): Promise<void> {
+  await db.liftCheckins.delete(dayKey); // liftCheckins.dayKey is PK (natural key)
+}

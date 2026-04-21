@@ -53,6 +53,13 @@ export async function getLastSessionForTemplate(
   return sessions.find(s => s.id !== excludeSessionId);
 }
 
+// ------- Session delete (Phase 3 — past-day delete from Day Detail) -------
+// Single-statement Dexie delete auto-transactions (Pitfall #1 not applicable).
+
+export async function deleteSession(id: string): Promise<void> {
+  await db.ptSessions.delete(id);
+}
+
 // ------- Presentation helper (no DB access) -------
 
 export function formatRelativeDays(loggedAt: number): string {
