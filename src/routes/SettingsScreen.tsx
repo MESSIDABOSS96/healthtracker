@@ -2,6 +2,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { getDeferredInstallPrompt, triggerInstallPrompt, isStandalone } from '@/lib/installMode';
 import { APP_VERSION, BUILD_HASH } from '@/lib/version';
+import { GoalsForm } from '@/features/settings/GoalsForm';
 
 function isAndroid(): boolean {
   return /android/i.test(navigator.userAgent);
@@ -48,6 +49,8 @@ export function SettingsScreen() {
           )}
         </Card>
       )}
+
+      <GoalsForm />
 
       <div className="flex-1" />
 
