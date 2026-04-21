@@ -1,32 +1,23 @@
-import { Card } from '@/components/ui/card';
+import { PTSection } from '@/features/pt/PTSection';
+import { FoodSection } from '@/features/food/FoodSection';
+import { StepsSection } from '@/features/steps/StepsSection';
+import { LiftSection } from '@/features/lifts/LiftSection';
 
 /**
- * Today screen — Phase 1 placeholder layout per D-05.
+ * Today screen — Phase 2 live-data layout.
  *
- * Status strings are LOCKED verbatim by UI-SPEC Copywriting Contract.
- * Title and status are stored as separate fields (rendered side-by-side
- * inside each Card) — see the sections array below for exact values.
- *
- * Phase 2 swaps the status slot for live data; the title slot and card frame stay.
+ * Phase 1's placeholder `sections` array is replaced by 4 feature components.
+ * Each section keeps the Phase 1 card frame (Heading + status row) verbatim;
+ * only the status slot goes dynamic per D-05. PT + Food open bottom Sheets on tap (D-01);
+ * Steps + Lift stay inline in their cards (D-02).
  */
-const sections = [
-  { title: 'PT',    status: 'not logged yet' },
-  { title: 'Food',  status: '0 / target cals' },
-  { title: 'Steps', status: '—' },
-  { title: 'Lift',  status: '☐' },
-];
-
 export function TodayScreen() {
   return (
     <div className="px-4 py-6 space-y-4">
-      {sections.map(({ title, status }) => (
-        <Card key={title} className="bg-surface border border-border rounded-lg p-4">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-base font-semibold text-text">{title}</h2>
-            <span className="text-sm text-muted">{status}</span>
-          </div>
-        </Card>
-      ))}
+      <PTSection />
+      <FoodSection />
+      <StepsSection />
+      <LiftSection />
     </div>
   );
 }
