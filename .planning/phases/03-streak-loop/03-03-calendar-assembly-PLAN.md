@@ -533,7 +533,7 @@ function viewFromKey(key: string): ViewMonth {
   return { year: d.getFullYear(), month0: d.getMonth() };
 }
 
-function samMonth(a: ViewMonth, b: ViewMonth): boolean {
+function sameMonth(a: ViewMonth, b: ViewMonth): boolean {
   return a.year === b.year && a.month0 === b.month0;
 }
 
@@ -550,8 +550,8 @@ export function StreakCalendar() {
   const earliest = useEarliestDayKey(); // string | null | undefined
   const earliestView: ViewMonth = earliest ? viewFromKey(earliest) : todayView;
 
-  const prevDisabled = samMonth(view, earliestView);
-  const nextDisabled = samMonth(view, todayView);
+  const prevDisabled = sameMonth(view, earliestView);
+  const nextDisabled = sameMonth(view, todayView);
 
   const handlePrev = () => {
     if (prevDisabled) return;
@@ -580,9 +580,7 @@ export function StreakCalendar() {
 }
 ```
 
-(Minor typo-safety: the function is named `samMonth` above — rename to `sameMonth` in the actual file. Do not ship the typo.)
-
-Corrected final: use `sameMonth` throughout.
+Note: the helper is `sameMonth` (spelled with the "e"). Acceptance criteria grep-forbid the `samMonth` typo — the file must not ship that spelling anywhere.
 
 **File 2 — Modify `src/routes/CalendarScreen.tsx`** — replace the stub body:
 
@@ -626,7 +624,8 @@ Do NOT:
     - `grep -c "<MonthGrid" src/features/calendar/StreakCalendar.tsx` is 1
     - `grep -c "prevDisabled" src/features/calendar/StreakCalendar.tsx` is at least 2 (compute + pass)
     - `grep -c "nextDisabled" src/features/calendar/StreakCalendar.tsx` is at least 2
-    - `! grep -E "samMonth" src/features/calendar/StreakCalendar.tsx` (typo caught — must be `sameMonth` or inlined)
+    - `grep -c "function sameMonth" src/features/calendar/StreakCalendar.tsx` is 1 (helper is correctly spelled)
+    - `! grep -E "samMonth" src/features/calendar/StreakCalendar.tsx` (B-4: literal-copy typo guard — MUST be absent)
     - `! grep -E "from '@/db/db'" src/features/calendar/StreakCalendar.tsx` (no direct db access)
     - `! grep -E "toISOString|new Date\\([\"'][0-9]" src/features/calendar/StreakCalendar.tsx`
     - `grep -c "export function CalendarScreen" src/routes/CalendarScreen.tsx` is 1
@@ -728,6 +727,7 @@ If any of 4-14 fails → describe the issue for re-plan. If the `/#/day/YYYY-MM-
       src/routes/CalendarScreen.tsx
   ```
 - useLiveQuery count across NEW calendar-assembly files: exactly 2 (MonthGrid via useMonthStreakData, StreakCount's local today-row subscription). No per-cell subscriptions.
+- B-4 typo guard: `! grep samMonth src/features/calendar/StreakCalendar.tsx` — the helper is `sameMonth`.
 - Manual smoke captured by the checkpoint task
 </verification>
 
@@ -750,3 +750,5 @@ After completion, create `.planning/phases/03-streak-loop/03-03-SUMMARY.md` docu
 - Any deviations from UI-SPEC (expected: none)
 - Confirmation of DayCell import path from Plan 03-02 + hook imports from Plan 03-01
 </output>
+</content>
+</invoke>

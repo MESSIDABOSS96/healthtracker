@@ -894,22 +894,22 @@ export async function deleteLift(dayKey: string): Promise<void> {
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **React Compiler enabled in Vite config?**
-   - What we know: `package.json` does not list `babel-plugin-react-compiler` but React 19 compiler can be enabled via `@vitejs/plugin-react` options.
-   - What's unclear: whether the project opted in.
-   - Recommendation: Planner or executor inspects `vite.config.ts` once; if enabled, A2 (skip memo) is safer. If disabled, A2 still likely safe but less insurance.
+1. **React Compiler enabled in Vite config?** — **RESOLVED: NOT enabled.**
+   - Verified `vite.config.ts` lines 29-31: `react()` plugin is invoked with NO options; no `babel-plugin-react-compiler` entry in `package.json`; no React-Compiler-related import anywhere in the config.
+   - Implication: A2 (skip `React.memo` on DayCell) is still the correct call per RESEARCH §8 — with 42 pure-JSX re-renders at ~15ms total, memoization is premature optimization regardless of compiler state. If React Compiler is enabled in a later phase, the decision remains correct (the compiler would auto-memoize pure components, making manual memo redundant).
+   - Action required by executor: NONE. Proceed without `React.memo`.
 
-2. **Should MonthGrid use `IntersectionObserver` or similar to defer offscreen cell renders?**
-   - What we know: CalendarScreen likely fits in-viewport on iPhone without scroll (UI-SPEC:342).
-   - What's unclear: any iPhone SE (320px) overflow behavior.
-   - Recommendation: Do not implement; 42 cells always renders. Virtualization is premature optimization at this count.
+2. **Should MonthGrid use `IntersectionObserver` or similar to defer offscreen cell renders?** — **RESOLVED: No.**
+   - CalendarScreen fits in-viewport on iPhone without scroll (UI-SPEC:342). 42 cells × pure-JSX render is sub-16ms per RESEARCH §8.
+   - Virtualization is premature optimization at this count; any iPhone SE (320px) overflow is handled by standard overflow-y-auto on the AppShell main.
+   - Action required by executor: NONE. Render all 42 cells eagerly.
 
-3. **Is there any value in caching the previous-month Map during navigation?**
-   - What we know: UI-SPEC:691 accepts the brief all-`--surface` flash.
-   - What's unclear: whether persistent cache would smooth UX measurably.
-   - Recommendation: Skip. Sub-16ms IDB makes the flash imperceptible.
+3. **Is there any value in caching the previous-month Map during navigation?** — **RESOLVED: No.**
+   - UI-SPEC:691 accepts the brief all-`--surface` flash. Sub-16ms IDB makes the flash imperceptible on the target hardware.
+   - Persistent cache would add complexity (cache invalidation on writes) with no measurable UX gain.
+   - Action required by executor: NONE. Let useLiveQuery re-subscribe on month nav.
 
 ---
 
