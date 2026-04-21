@@ -45,7 +45,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. After logging a meal, the calories/protein/carbs/fat progress bars update immediately without a page reload, showing progress against the configured daily targets
   4. User can enter today's step count and see a progress bar update toward the configured step goal
   5. User can tap a single "Lifted today" toggle and optionally add a short note; the lift check-in is stored under today's dayKey
-**Plans**: TBD
+**Plans**: 5 plans
+  - [ ] 02-01-foundation-PLAN.md — Install RHF/Zod + @radix-ui/react-dialog, upgrade Sheet, ProgressBar primitive, inferBucket, service skeletons, goals seed in initApp (no REQs)
+  - [ ] 02-02-goals-settings-PLAN.md — Goals form in Settings (RHF+Zod); useGoals hook; SET-01, SET-02, SET-03
+  - [ ] 02-03-food-slice-PLAN.md — Food Sheet: quick-log chips, inline create+photo, section-grouped today's meals, inline-edit rows; FOOD-01..08
+  - [ ] 02-04-pt-slice-PLAN.md — PT Sheet: template list + nested editor + session form with previous-session hint + pain + notes; PT-01..07
+  - [ ] 02-05-steps-lift-today-PLAN.md — Inline Steps + Lift slices; wire 4 feature sections into TodayScreen; STEPS-01..02, LIFT-01..02
 **UI hint**: yes
 
 ### Phase 3: Streak Loop
