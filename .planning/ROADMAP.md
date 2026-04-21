@@ -63,7 +63,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A day with all 4 segments logged renders as a visually "complete" full-fill state distinct from partial days
   4. Tapping any calendar day opens a day detail view showing all four areas' logs and totals for that day
   5. The calendar screen displays the current consecutive-complete-days streak count alongside the month grid, and prev/next month navigation works
-**Plans**: TBD
+**Plans**: 4 plans
+  - [ ] 03-01-streak-service-PLAN.md — streak.svc.ts (4-table Promise.all range query) + monthMath.ts + calendar/hooks.ts; STREAK-01, STREAK-05, STREAK-07
+  - [ ] 03-02-daycell-primitive-PLAN.md — DayCell.tsx pure 4-quadrant indicator with alpha-ramp + today-ring; STREAK-02, STREAK-03, STREAK-04
+  - [ ] 03-03-calendar-assembly-PLAN.md — MonthGrid + StreakCount + MonthHeader + WeekdayHeader + StreakCalendar + CalendarScreen body; STREAK-01, STREAK-04, STREAK-05, STREAK-07
+  - [ ] 03-04-day-detail-PLAN.md — /#/day/:dayKey route + DayDetail composer + 3 additive delete service fns; STREAK-06
 **UI hint**: yes
 
 ### Phase 4: Backup & Polish
