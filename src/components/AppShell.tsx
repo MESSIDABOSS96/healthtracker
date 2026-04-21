@@ -2,13 +2,20 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Settings as SettingsIcon } from 'lucide-react';
 import { TabBar } from './TabBar';
+import { InstallBanner } from './InstallBanner';
+import { EvictionBanner } from './EvictionBanner';
 
 /**
  * AppShell — top header + banner slot + route outlet + bottom tab bar (D-01).
  * The <header> and TabBar's <nav> provide implicit landmark roles.
  *
- * Plan 01-03 will mount <InstallBanner /> and <EvictionBanner /> in the banner
- * slot above {children}. This file deliberately only includes a comment marker.
+ * Plan 01-03 mounts <InstallBanner /> and <EvictionBanner /> in the banner
+ * slot above {children}. Per UI-SPEC §"Banner stacking rule" — Install first,
+ * Eviction second, separated by space-y-3 (12px). Both banners self-guard
+ * against rendering when their trigger conditions are unmet (return null), so
+ * the wrapping container is always present but visually empty when neither
+ * shows. The 16px top padding (px-4 pt-4) is harmless in the banner-less state
+ * and matches Today's outer px-4 py-6 padding rhythm.
  */
 export function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -28,7 +35,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-md mx-auto w-full">
-          {/* Plan 01-03 mounts Install + Eviction banners HERE (above route outlet, inside content column). */}
+          <div className="px-4 pt-4 space-y-3">
+            <InstallBanner />
+            <EvictionBanner />
+          </div>
           {children}
         </div>
       </main>
