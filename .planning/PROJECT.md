@@ -14,7 +14,8 @@ A fully-local PWA health tracker for a single user (Anirudh) covering four daily
 
 <!-- Shipped and confirmed valuable. -->
 
-(None yet — ship to validate)
+- [x] Installable PWA with offline support (IndexedDB storage, no server) — Validated in Phase 1: Foundation (carry-forward HUMAN-UAT for on-device install confirmation, see `01-HUMAN-UAT.md`)
+- [x] Dark mode, minimal/calm visual aesthetic throughout — Validated in Phase 1: Foundation (Tailwind v4 tokens locked, dark class belt-and-suspenders in index.html + main.tsx)
 
 ### Active
 
@@ -29,8 +30,6 @@ A fully-local PWA health tracker for a single user (Anirudh) covering four daily
 - [ ] Daily lift check-in (yes/no + optional short note) — no sets/reps in this app
 - [ ] Configurable daily targets for calories, protein, carbs, fat, and steps
 - [ ] Manual JSON export/import for backup and device migration
-- [ ] Installable PWA with offline support (IndexedDB storage, no server)
-- [ ] Dark mode, minimal/calm visual aesthetic throughout
 
 ### Out of Scope
 
@@ -75,7 +74,9 @@ A fully-local PWA health tracker for a single user (Anirudh) covering four daily
 | Lifts are daily check-in only | User tracks lifts in detail on another platform; re-tracking would add friction without value | — Pending |
 | Manual JSON export/import for backup | Simplest backup model that gives user control; auto-sync would require a backend | — Pending |
 | Dark mode + minimal aesthetic | User-stated preference; aligns with "calm and low cognitive load" design philosophy | — Pending |
-| Tech stack deferred to research | User has no preference; research phase will evaluate modern PWA stacks against fast-MVP + solo-dev constraints | — Pending |
+| Tech stack deferred to research | User has no preference; research phase will evaluate modern PWA stacks against fast-MVP + solo-dev constraints | ✓ Locked in Phase 1: React 19 + Vite 7 + TypeScript + Dexie 4 + Tailwind v4 + shadcn/ui (see research/STACK.md) |
+| Photos: WebP @ 80%, ≤800×800, OPFS-stored, photoKey reference in Dexie | Raw iPhone photos fill quota and crash tab; OPFS keeps Dexie row size flat; WebP@80% beats JPEG@70% on visual quality at lower bytes (CONTEXT.md D-07) | ✓ Validated in Phase 1: Foundation — photoStore.ts ships; CLAUDE.md rule #5 corrected from JPEG@70% |
+| three-layer iOS eviction defense (persist + install banner + eviction banner) | Pitfall #3: iOS Safari evicts IndexedDB after 7 days inactivity; persist() alone insufficient because iOS still drops if user dismisses or uses Safari rarely | ✓ Validated in Phase 1: Foundation (on-device install confirmation carry-forward in 01-HUMAN-UAT.md) |
 
 ## Evolution
 
@@ -94,5 +95,11 @@ This document evolves at phase transitions and milestone boundaries.
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
 
+## Current State
+
+**Phase 1: Foundation — Complete (2026-04-21).** Installable PWA shell ships: Vite 7 + React 19 + TS scaffold, Dexie v1 (7 stores), dayKey utility (Pitfall #4 guarded with dev-only smoke), OPFS photoStore (WebP@80%), navigator.storage.persist() on every startup, vite-plugin-pwa generateSW + autoUpdate, Install + Eviction banners, Settings version line. Dark base layout per UI-SPEC. Carry-forward: on-device install/offline confirmation (01-HUMAN-UAT.md, 4 items).
+
+**Next:** Phase 2 — Tracking Slices (PT, food, steps, lifts, goals).
+
 ---
-*Last updated: 2026-04-19 after initialization*
+*Last updated: 2026-04-21 after Phase 1 completion*
