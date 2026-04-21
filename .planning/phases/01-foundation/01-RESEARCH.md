@@ -592,7 +592,7 @@ Plannable as 5 plans (the planner can further split or merge):
 
 **Parallelism opportunities:** Plans 2, 3, and 4 can be developed concurrently after Plan 1 scaffolds exist — they share only the Vite project root. Plan 5 depends on Plans 2 + 4 being in place (it wires the banner UI into the shell and uses the tokens for styling).
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 None. All Phase 1 decisions are locked in CONTEXT.md. Any ambiguities (EXIF orientation, Vitest vs console.assert, icon-asset creation) are explicitly flagged as Claude's discretion.
 

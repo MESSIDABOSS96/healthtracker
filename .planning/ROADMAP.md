@@ -29,7 +29,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. `lib/dayKey.ts:todayKey()` returns the correct local `YYYY-MM-DD` string when called at 11:30pm in a UTC-5 context (verified by a unit test or console check)
   4. Food photos can be saved to OPFS as resized ≤800×800 WebP blobs; `foods` records hold only the `photoKey` filename reference
   5. App renders in dark mode with the base layout shell (top nav, bottom tab bar or equivalent) loading in under 1s from a warm service-worker cache
-**Plans**: TBD
+**Plans**: 3 plans
+  - [ ] 01-01-scaffold-shell-PLAN.md — Scaffold Vite 7 + React 19 + TS, Tailwind v4 tokens, shadcn/ui, hash routing, AppShell with bottom tab bar, Today/Calendar/Settings stubs per D-05
+  - [ ] 01-02-data-layer-PLAN.md — Dexie v1 with 7 stores + append-only migration comment, dayKey.ts with 11:30pm UTC-5 smoke assertion, OPFS photoStore with WebP@80% resize pipeline
+  - [ ] 01-03-pwa-startup-banners-PLAN.md — vite-plugin-pwa (generateSW + autoUpdate), manifest + icons + apple-touch-icon, initApp() startup (persist, lastOpenedAt, SW register), Install + Eviction banners, Settings version line, CLAUDE.md rule #5 update (JPEG→WebP)
 **UI hint**: yes
 
 ### Phase 2: Tracking Slices
@@ -74,7 +77,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/TBD | Not started | - |
+| 1. Foundation | 0/3 | Not started | - |
 | 2. Tracking Slices | 0/TBD | Not started | - |
 | 3. Streak Loop | 0/TBD | Not started | - |
 | 4. Backup & Polish | 0/TBD | Not started | - |
