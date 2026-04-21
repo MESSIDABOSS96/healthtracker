@@ -157,10 +157,24 @@ Phase 2 makes all four Today sections (PT, Food, Steps, Lift) actually usable en
 - **Weekly macro summary** (INSIGHT-02) — v2.
 - **Toast primitive + error-toast UX** — deferred; Phase 2 follows Phase 1's silent+console pattern for non-fatal writes.
 - **Today-card populated-status exact copy** — Claude's Discretion during planning; pattern intent fixed (title + em-dash + live status).
+- **Food edit (FOOD-02 "edit" clause)** — deferred to v2 per D-17. Phase 2 supports food create + delete only; mis-entered foods are corrected by delete + re-create. REQUIREMENTS.md traceability amends FOOD-02 to "v1: create + delete; v2: edit".
 
 </deferred>
+
+<answered_during_planning>
+## Resolutions (2026-04-20, during `/gsd-plan-phase 2`)
+
+These decisions were flagged as open by `02-RESEARCH.md` and resolved by the user before plan lock-in. They are now LOCKED and downstream agents must treat them as equivalent to D-01..D-16.
+
+- **D-17 — FOOD-02 edit scope:** Phase 2 is create + delete only. Edit a food = delete + re-create. No "Edit" affordance in the picker overflow menu.
+- **D-18 — Today's meal list layout:** Section-header grouped inside the Food Sheet. Four labeled sections (Breakfast / Lunch / Dinner / Snack), each showing its entries or an em-dash when empty. No tabbed filter.
+- **D-19 — PT session draft behavior:** Form-local until Save. Exercise `completed` checkboxes, actual sets/reps, pain rating, and notes live only in React Hook Form state until the user taps "Save session". No Dexie draft rows, no auto-save on tick. Matches UI-SPEC "Sheet primary action" pattern.
+- **D-20 — Meal entry inline-edit scope:** Servings + bucket only. `foodId` is immutable once logged. To switch food, delete the entry and re-log.
+
+</answered_during_planning>
 
 ---
 
 *Phase: 02-tracking-slices*
 *Context gathered: 2026-04-20*
+*Decisions D-17..D-20 appended during planning: 2026-04-20*
