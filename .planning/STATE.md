@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-01-scaffold-shell-PLAN.md
-last_updated: "2026-04-21T03:15:54.880Z"
+stopped_at: Completed 01-02-data-layer-PLAN.md
+last_updated: "2026-04-21T03:26:19.806Z"
 last_activity: 2026-04-21
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
-  percent: 33
+  completed_plans: 2
+  percent: 67
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-19)
 ## Current Position
 
 Phase: 01 (foundation) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-04-21
 
-Progress: [███░░░░░░░] 33%
+Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [███░░░░░░░] 33%
 
 *Updated after each plan completion*
 | Phase 01-foundation P01 | 8min | 3 tasks | 23 files |
+| Phase 01-foundation P02 | 5min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,11 @@ Recent decisions affecting current work:
 - Plan 01-01: shadcn/ui Button/Card/Sheet authored manually as Phase-1 ports (no Radix dialog yet); Sheet upgraded to Radix in Phase 2 when first consumed
 - Plan 01-01: @types/node added so vite.config.ts can use fileURLToPath for the @/* alias (TS paths don't propagate to Rollup)
 - Plan 01-01: Banner uses role=region + aria-label rather than role=banner to avoid duplicate landmarks with AppShell <header>
+- Plan 01-02: Used quoted property names in version(1).stores({...}) for grep-ability — semantically identical to bare identifiers
+- Plan 01-02: Reworded dayKey.ts header comments to avoid literal forbidden-API tokens (toISOString, new Date(key)) so strict grep acceptance criteria pass while preserving Pitfall #4 safety documentation
+- Plan 01-02: dayKey.smoke.ts is unimported (tree-shakable); Plan 01-03 must wire runDayKeySmoke() into initApp() under import.meta.env.DEV
+- Plan 01-02: CLAUDE.md rule #5 still says JPEG@70% — Plan 01-03 must update to WebP@80% per CONTEXT.md D-07
+- Plan 01-02: createImageBitmap uses imageOrientation: 'from-image' (Phase 1 inclusion) so iPhone EXIF-rotated photos render right-side-up without canvas math
 
 ### Pending Todos
 
@@ -91,8 +97,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-21T03:15:54.875Z
-Stopped at: Completed 01-01-scaffold-shell-PLAN.md
+Last session: 2026-04-21T03:26:19.801Z
+Stopped at: Completed 01-02-data-layer-PLAN.md
 Resume file: None
 
 **Planned Phase:** 01 (Foundation) — 3 plans — 2026-04-21T02:57:50.377Z

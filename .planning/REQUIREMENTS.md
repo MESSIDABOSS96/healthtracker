@@ -18,11 +18,16 @@ Requirements for initial release. Each maps to exactly one roadmap phase.
 
 ### Data Layer
 
-- [ ] **DATA-01**: IndexedDB schema is versioned from day one via Dexie `db.version(1).stores(...)` with an append-only migration policy
-- [ ] **DATA-02**: A single `dayKey` utility (`YYYY-MM-DD` in local time, built from `getFullYear/Month/Date`) is the sole source for day identity across all stores
-- [ ] **DATA-03**: Object stores exist for: `foods`, `mealEntries`, `ptTemplates`, `ptSessions`, `stepEntries`, `liftCheckins`, `goals` (singleton)
-- [ ] **DATA-04**: Food photos are stored in OPFS (not as blobs indexed inside IndexedDB); `foods` records hold a `photoKey` filename reference only
-- [ ] **DATA-05**: Before writing to OPFS, each uploaded photo is resized client-side to ≤800×800 at ~70% JPEG quality
+- [x] **DATA-01
+**: IndexedDB schema is versioned from day one via Dexie `db.version(1).stores(...)` with an append-only migration policy
+- [x] **DATA-02
+**: A single `dayKey` utility (`YYYY-MM-DD` in local time, built from `getFullYear/Month/Date`) is the sole source for day identity across all stores
+- [x] **DATA-03
+**: Object stores exist for: `foods`, `mealEntries`, `ptTemplates`, `ptSessions`, `stepEntries`, `liftCheckins`, `goals` (singleton)
+- [x] **DATA-04
+**: Food photos are stored in OPFS (not as blobs indexed inside IndexedDB); `foods` records hold a `photoKey` filename reference only
+- [x] **DATA-05
+**: Before writing to OPFS, each uploaded photo is resized client-side to ≤800×800 at ~70% JPEG quality
 
 ### PT (Physical Therapy)
 
