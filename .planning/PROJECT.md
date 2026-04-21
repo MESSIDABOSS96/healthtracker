@@ -99,7 +99,9 @@ This document evolves at phase transitions and milestone boundaries.
 
 **Phase 1: Foundation — Complete (2026-04-21).** Installable PWA shell ships: Vite 7 + React 19 + TS scaffold, Dexie v1 (7 stores), dayKey utility (Pitfall #4 guarded with dev-only smoke), OPFS photoStore (WebP@80%), navigator.storage.persist() on every startup, vite-plugin-pwa generateSW + autoUpdate, Install + Eviction banners, Settings version line. Dark base layout per UI-SPEC. Carry-forward: on-device install/offline confirmation (01-HUMAN-UAT.md, 4 items).
 
-**Next:** Phase 2 — Tracking Slices (PT, food, steps, lifts, goals).
+**Phase 2: Tracking Slices — Complete (2026-04-21).** All four daily tracking areas usable: PT (templates → sessions with previous-session hint, pain rating, notes), Food (create with OPFS photo, tap-to-log via Recent/Frequent chips, inline-edit, bucketed today list, live macro bars), Steps (inline input + bar), Lift (toggle + conditional note). Goals form in Settings with RHF+Zod validation and pre-seeded D-13 defaults. TodayScreen renders 4 live sections. 22 REQs architecturally verified (PT-01..07, FOOD-01..08, STEPS-01..02, LIFT-01..02, SET-01..03); FOOD-02 locked to create+delete for v1 per D-17 (edit deferred). Code review: 0 critical / 6 warning / 8 info — no PITFALLS violations. Carry-forward: 9 UI-behavioral UAT items (02-HUMAN-UAT.md) pending live-browser verification.
+
+**Next:** Phase 3 — Streak Loop (4-segment DayCell, calendar, streak count).
 
 ---
-*Last updated: 2026-04-21 after Phase 1 completion*
+*Last updated: 2026-04-21 after Phase 2 completion*
