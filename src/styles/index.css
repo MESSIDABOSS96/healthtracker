@@ -1,0 +1,27 @@
+@import './tokens.css';
+@import 'tailwindcss';
+
+/* Tailwind v4 theme directive — maps tokens to utility classes.
+   Result: bg-bg, bg-surface, text-muted, border-border, text-accent, etc. */
+@theme {
+  --color-bg:      var(--bg);
+  --color-surface: var(--surface);
+  --color-border:  var(--border);
+  --color-muted:   var(--muted);
+  --color-text:    var(--text);
+  --color-accent:  var(--accent);
+}
+
+html {
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  margin: 0;
+}
+
+/* Safe-area support for iPhone notch + home indicator (D-04) */
+.safe-area-top    { padding-top:    env(safe-area-inset-top); }
+.safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }

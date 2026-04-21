@@ -1,0 +1,22 @@
+/* src/styles/tokens.css — Locked dark-mode design tokens (D-15, D-16, D-17).
+   Imported once by src/styles/index.css. Do not edit values without a CONTEXT.md
+   decision update. Phase-3 alpha-ramp tokens (--accent-25/50/75/100) are declared
+   here but not rendered until Phase 3's DayCell consumes them. */
+
+:root {
+  /* Base palette — shadcn zinc (D-15) */
+  --bg:      #09090b;
+  --surface: #18181b;
+  --border:  #27272a;
+  --muted:   #a1a1aa;
+  --text:    #fafafa;
+
+  /* Accent — soft green (D-16) */
+  --accent:      #22c55e;
+
+  /* DayCell partial-fill alpha ramp (D-17) — declared in Phase 1, consumed in Phase 3 */
+  --accent-25:   rgba(34, 197, 94, 0.25);
+  --accent-50:   rgba(34, 197, 94, 0.50);
+  --accent-75:   rgba(34, 197, 94, 0.75);
+  --accent-100:  #22c55e;
+}
