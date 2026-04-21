@@ -13,9 +13,10 @@ import { todayKey } from '@/lib/dayKey';
 interface Props {
   currentNote: string;
   onCommitted: () => void;
+  dayKey?: string; // Phase 3: Day Detail passes dayKey; Today callers omit to default to todayKey().
 }
 
-export function LiftNoteInput({ currentNote, onCommitted }: Props) {
+export function LiftNoteInput({ currentNote, onCommitted, dayKey }: Props) {
   const [value, setValue] = useState(currentNote);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -24,7 +25,7 @@ export function LiftNoteInput({ currentNote, onCommitted }: Props) {
   }, []);
 
   const commit = async () => {
-    await setLiftNote(todayKey(), value.trim());
+    await setLiftNote(dayKey ?? todayKey(), value.trim());
     onCommitted();
   };
 

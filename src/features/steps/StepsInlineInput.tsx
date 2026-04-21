@@ -18,9 +18,10 @@ import { todayKey } from '@/lib/dayKey';
 interface Props {
   currentCount: number;
   onCommitted: () => void; // parent closes the reveal after commit or cancel
+  dayKey?: string; // Phase 3: Day Detail passes dayKey; Today callers omit to default to todayKey().
 }
 
-export function StepsInlineInput({ currentCount, onCommitted }: Props) {
+export function StepsInlineInput({ currentCount, onCommitted, dayKey }: Props) {
   const [value, setValue] = useState(String(currentCount || ''));
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -31,7 +32,7 @@ export function StepsInlineInput({ currentCount, onCommitted }: Props) {
   const commit = async () => {
     const parsed = parseInt(value, 10);
     if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 999_999) {
-      await upsertSteps(todayKey(), Math.floor(parsed));
+      await upsertSteps(dayKey ?? todayKey(), Math.floor(parsed));
     }
     onCommitted();
   };

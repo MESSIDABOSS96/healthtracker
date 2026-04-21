@@ -17,16 +17,17 @@ import { cn } from '@/lib/utils';
 
 interface Props {
   lifted: boolean;
+  dayKey?: string; // Phase 3: Day Detail passes dayKey; Today callers omit to default to todayKey().
 }
 
-export function LiftToggle({ lifted }: Props) {
+export function LiftToggle({ lifted, dayKey }: Props) {
   return (
     <button
       type="button"
       aria-label={lifted ? "Undo lifted today" : "Mark lifted today"}
       aria-pressed={lifted}
       onClick={() => {
-        void toggleLift(todayKey());
+        void toggleLift(dayKey ?? todayKey());
       }}
       className="p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-md"
     >
