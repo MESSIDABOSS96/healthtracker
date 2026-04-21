@@ -33,7 +33,7 @@ React 19 + Vite 7 + TypeScript + Dexie 4 (+ `useLiveQuery`) + Tailwind CSS 4 + s
 2. **Never edit a past `db.version(N).stores({...})` declaration** — schema migrations are append-only. Add a new version block.
 3. **Never use `toISOString().split('T')[0]`** to derive a day key — it returns UTC date and shifts days for western timezones. Use `lib/dayKey.ts` only.
 4. **Call `navigator.storage.persist()` on startup** — without it, iOS Safari wipes IndexedDB after 7 days of inactivity.
-5. **Resize photos to ≤800×800 @ ~70% JPEG before OPFS write** — raw iPhone photos fill quota and crash the tab.
+5. **Resize photos to ≤800×800 @ 80% WebP before OPFS write** — raw iPhone photos fill quota and crash the tab.
 6. **Photos live in OPFS, not as Dexie blobs** — `foods.photoKey` stores only a filename reference.
 
 ## GSD Workflow (Active)
