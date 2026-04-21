@@ -12,7 +12,8 @@ Requirements for initial release. Each maps to exactly one roadmap phase.
 - [ ] **SETUP-01**: App installs as a PWA to iOS and Android home screens (manifest, icons, theme color)
 - [ ] **SETUP-02**: App functions fully offline after first load (service worker precaches app shell via Workbox)
 - [ ] **SETUP-03**: App calls `navigator.storage.persist()` at startup so iOS doesn't evict data after 7 days of inactivity
-- [ ] **SETUP-04**: App renders in a dark, minimal, low-noise visual style as the default (and only) theme
+- [x] **SETUP-04
+**: App renders in a dark, minimal, low-noise visual style as the default (and only) theme
 - [ ] **SETUP-05**: App loads to a useful landing screen (today's summary + calendar) in under 1s on a warm cache
 
 ### Data Layer

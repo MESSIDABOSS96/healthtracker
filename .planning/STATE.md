@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 1 UI-SPEC approved
-last_updated: "2026-04-21T02:57:50.391Z"
-last_activity: 2026-04-19 — Roadmap created; ready to plan Phase 1
+status: executing
+stopped_at: Completed 01-01-scaffold-shell-PLAN.md
+last_updated: "2026-04-21T03:15:54.880Z"
+last_activity: 2026-04-21
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 33
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-19)
 
 **Core value:** Visual consistency feedback that makes logging feel like a win — the 4-segment day indicator and calendar streak loop drive daily return.
-**Current focus:** Phase 1 — Foundation
+**Current focus:** Phase 01 — foundation
 
 ## Current Position
 
-Phase: 1 of 4 (Foundation)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-04-19 — Roadmap created; ready to plan Phase 1
+Phase: 01 (foundation) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-04-21
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion*
+| Phase 01-foundation P01 | 8min | 3 tasks | 23 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,10 @@ Recent decisions affecting current work:
 - Roadmap: Phase 2 plans should be structured for parallel execution (PT plans independent of Food+Steps+Lifts+Goals plans)
 - Open: Segment completion definition ("any log" vs "hit target") must be resolved before streak.svc.ts is written in Phase 3
 - Open: PT rest day affordance model (isRestDay flag vs separate record) must be decided before Phase 3
+- Plan 01-01: Pinned Vite ^7 (not ^8) per CLAUDE.md vite-plugin-pwa peer-dep policy
+- Plan 01-01: shadcn/ui Button/Card/Sheet authored manually as Phase-1 ports (no Radix dialog yet); Sheet upgraded to Radix in Phase 2 when first consumed
+- Plan 01-01: @types/node added so vite.config.ts can use fileURLToPath for the @/* alias (TS paths don't propagate to Rollup)
+- Plan 01-01: Banner uses role=region + aria-label rather than role=banner to avoid duplicate landmarks with AppShell <header>
 
 ### Pending Todos
 
@@ -86,8 +91,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 1 UI-SPEC approved
-Resume file: --resume-file
+Last session: 2026-04-21T03:15:54.875Z
+Stopped at: Completed 01-01-scaffold-shell-PLAN.md
+Resume file: None
 
 **Planned Phase:** 01 (Foundation) — 3 plans — 2026-04-21T02:57:50.377Z
