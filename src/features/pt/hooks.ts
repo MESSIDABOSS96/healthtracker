@@ -20,8 +20,11 @@ export function useTemplates() {
   return useLiveQuery(() => getTemplates(), []);
 }
 
-export function useLastSessionForTemplate(templateId: string) {
-  return useLiveQuery(() => getLastSessionForTemplate(templateId), [templateId]);
+export function useLastSessionForTemplate(templateId: string, excludeSessionId?: string) {
+  return useLiveQuery(
+    () => getLastSessionForTemplate(templateId, excludeSessionId),
+    [templateId, excludeSessionId],
+  );
 }
 
 export function useTodayPTSessions() {

@@ -43,23 +43,30 @@ type SessionFormValues = {
 interface PTSessionFormProps {
   template: PTTemplate;
   onClose: () => void;
+  editSession?: PTSession; // Phase 3: when present, form pre-fills + save preserves id/dayKey/loggedAt.
 }
 
-export function PTSessionForm({ template, onClose }: PTSessionFormProps) {
-  const prevSession = useLastSessionForTemplate(template.id);
+export function PTSessionForm({ template, onClose, editSession }: PTSessionFormProps) {
+  const prevSession = useLastSessionForTemplate(template.id, editSession?.id);
 
   const { register, handleSubmit, watch, setValue } = useForm<SessionFormValues>({
-    // D-19: form-local state; `values:` re-syncs if the template changes.
+    // D-19: form-local state. In edit mode, hydrate from editSession — matching
+    // by exercise NAME (not position) in case template was re-ordered since the
+    // session was logged. Missing exercises fall back to the template's default
+    // blank row.
     values: {
-      exercises: template.exercises.map((e) => ({
-        name: e.name,
-        actualSets: undefined,
-        actualReps: undefined,
-        actualDurationSec: undefined,
-        completed: false,
-      })),
-      painRating: undefined,
-      notes: '',
+      exercises: template.exercises.map((e) => {
+        const prev = editSession?.exercises.find((pe) => pe.name === e.name);
+        return {
+          name: e.name,
+          actualSets: prev?.actualSets,
+          actualReps: prev?.actualReps,
+          actualDurationSec: prev?.actualDurationSec,
+          completed: prev?.completed ?? false,
+        };
+      }),
+      painRating: editSession?.painRating,
+      notes: editSession?.notes ?? '',
     },
   });
 
@@ -67,10 +74,12 @@ export function PTSessionForm({ template, onClose }: PTSessionFormProps) {
 
   const onSubmit = handleSubmit(async (data) => {
     const session: PTSession = {
-      id: crypto.randomUUID(),
-      dayKey: todayKey(),
+      // Edit mode preserves id/dayKey/loggedAt so saveSession (put-by-id) performs
+      // an UPDATE, not an INSERT — keeping the session pinned to its original day.
+      id: editSession?.id ?? crypto.randomUUID(),
+      dayKey: editSession?.dayKey ?? todayKey(),
       templateId: template.id,
-      loggedAt: Date.now(),
+      loggedAt: editSession?.loggedAt ?? Date.now(),
       exercises: data.exercises.map((e) => ({
         name: e.name,
         actualSets: e.actualSets,
