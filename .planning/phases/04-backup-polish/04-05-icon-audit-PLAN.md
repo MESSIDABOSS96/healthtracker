@@ -7,7 +7,7 @@ depends_on: []
 files_modified:
   - public/icon-maskable-512.png
 autonomous: false
-requirements: [BACK-01, BACK-02]
+requirements: []
 tags: [pwa, icon, maskable, audit, polish]
 
 must_haves:

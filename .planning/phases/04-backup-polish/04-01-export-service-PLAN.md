@@ -197,13 +197,32 @@ export function Card(props: React.HTMLAttributes<HTMLDivElement>): JSX.Element;
     - Service imports `db` from `@/db/db` — UI layer does NOT import db directly (enforced at Task 2)
   </behavior>
   <action>
-STEP 1 — Modify `src/lib/storageKeys.ts`. Append exactly one line at the end of the file, matching the existing `'healthtracker:<camelCase>'` prefix convention (NOT the inline `'ht.*'` used elsewhere — this file is the centralized-constant home). Resolved per planner open-question #2: use `'healthtracker:lastExportedAt'`.
+STEP 1 — Modify `src/lib/storageKeys.ts`. Append exactly one line at the end of the file:
 
 ```typescript
 export const LAST_EXPORTED_KEY = 'healthtracker:lastExportedAt';
 ```
 
-Result file state (add blank line between existing constants and new one optional — match existing file's compactness):
+**RATIONALE for the literal `'healthtracker:lastExportedAt'` (not `'ht.lastExportedAt'`):**
+
+CONTEXT.md D-04 contains an internal contradiction between two instructions:
+  (a) Line 31 says `(e.g. LAST_EXPORTED_KEY = 'ht.lastExportedAt')` — note the `e.g.` prefix,
+      which in natural language marks the literal as ILLUSTRATIVE, not normative.
+  (b) Line 126 (§code_context) says the new constant "matches `PREV_OPENED_KEY` style" —
+      and `PREV_OPENED_KEY = 'healthtracker:prevOpenedAt'`, NOT `'ht.prevOpenedAt'`.
+
+We resolve this contradiction toward (b) because:
+  1. The `e.g.` prefix on (a) explicitly marks it as illustrative — not a locked literal.
+  2. The "matches PREV_OPENED_KEY style" directive (b) is explicit and non-illustrative.
+  3. Verified existing convention in `src/lib/storageKeys.ts:6-8` — ALL 3 current keys use
+     the `'healthtracker:<camelCase>At'` pattern (lastOpenedAt, prevOpenedAt, installDismissedAt).
+     Introducing a fourth key with a different prefix (`ht.*`) would break the centralized
+     constant file's one-style rule.
+  4. The comment at storageKeys.ts:2-5 frames the file as the centralized home — any
+     `'ht.*'` literals living elsewhere in the codebase are legacy and outside this file's
+     scope; new additions here follow the file's established `'healthtracker:'` convention.
+
+Result file state:
 ```typescript
 // src/lib/storageKeys.ts
 // Centralized localStorage keys. No side effects — safe to import from anywhere.
@@ -602,7 +621,7 @@ export function ExportCard() {
       && grep -q "#ef4444" src/features/settings/ExportCard.tsx \
       && grep -q "useLiveQuery" src/features/settings/ExportCard.tsx \
       && ! grep -qE "toISOString\\(\\)\\.split" src/features/settings/ExportCard.tsx \
-      && ! grep -q "from '@/db/db'" src/features/settings/ExportCard.tsx || grep -q "db.ptSessions.count" src/features/settings/ExportCard.tsx \
+      && ( ! grep -q "from '@/db/db'" src/features/settings/ExportCard.tsx || grep -q "db.ptSessions.count()" src/features/settings/ExportCard.tsx ) \
       && npm run build
     </automated>
   </verify>

@@ -8,7 +8,7 @@ files_modified:
   - vite.config.ts
   - index.html
 autonomous: true
-requirements: [BACK-01, BACK-02]
+requirements: []
 tags: [pwa, manifest, ios, meta, install-polish]
 
 must_haves:
@@ -284,7 +284,7 @@ No changes to `<body>`, `<script>`, the `<html lang="en" class="dark">` attribut
 <success_criteria>
 **D-15 closed:** vite.config.ts manifest block contains `id: '/'` and `categories: ['health', 'fitness', 'productivity']`. Build emits them into dist/manifest.webmanifest.
 
-**D-14 closed (plus RESEARCH refinement):** index.html ships all 3 apple-* tags from Phase 1 PLUS the research-recommended standardized `mobile-web-app-capable` tag for Android install-UI correctness. Pitfall 2 handled — both tag names coexist per research best practice.
+**D-14 confirmed-already-shipped (Phase 1 baseline at index.html:9-11) + Phase 4 RESEARCH refinement:** Verified the 3 apple-* meta tags D-14 lists were ALREADY shipped by Phase 1 at `index.html:9-11`. Phase 4's contribution is the one-line addition of the standardized `mobile-web-app-capable` tag for Android install-UI correctness (per RESEARCH.md Pitfall 2 — both tag names coexist). D-14 is therefore "Phase 1 baseline + Phase 4 standardized complement," not "newly closed by Phase 4."
 
 **No collateral changes:** Only 3 lines added across 2 files. No other manifest fields, no other HTML tags, no build plugin behavior altered.
 </success_criteria>

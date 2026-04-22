@@ -9,12 +9,13 @@ files_modified:
   - src/features/calendar/hooks.ts
   - src/features/calendar/StreakCount.tsx
 autonomous: true
-requirements: [BACK-01, BACK-02]
+requirements: []
 tags: [streak, midnight, hook, polish]
 
 must_haves:
   truths:
-    - "A user sitting on a long-open Calendar tab across local midnight sees the streak count and today-quadrant-completion state refresh WITHOUT a page reload (closes WR-01 and WR-02 from Phase 3 review)"
+    - "A user who keeps the Calendar open past local midnight sees the streak count update to reflect the new day without reloading — the motivator stays trustworthy overnight"
+    - "Today's 4-quadrant ring reflects the correct day's logs at all times, even across a midnight rollover — no stale 'yesterday's 4/4' visible the morning after"
     - "useDayKey() returns today's dayKey (via lib/dayKey.ts:todayKey) and triggers a React re-render when local midnight passes"
     - "The hook schedules exactly ONE setTimeout at a time per consumer; on each fire it re-schedules for the next local midnight (chained reschedule via [key] useEffect dep)"
     - "On component unmount, the active timer is cleared (no leaked timers across unmounts)"

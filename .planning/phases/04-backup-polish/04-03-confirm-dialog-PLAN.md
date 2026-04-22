@@ -8,11 +8,12 @@ files_modified:
   - src/components/ui/confirm-dialog.tsx
   - src/features/calendar/DayDetail.tsx
 autonomous: true
-requirements: [BACK-01, BACK-02]
+requirements: []
 tags: [confirm, dialog, ui-primitive, polish, lift]
 
 must_haves:
   truths:
+    - "A mis-tap on the Lift row's Delete button no longer silently destroys the lift check-in and its note — the user sees a confirm dialog and can back out"
     - "User tapping the Lift 'Delete' button in DayDetail sees a ConfirmDialog BEFORE deleteLift is called — no silent data loss"
     - "Cancel button dismisses the dialog WITHOUT calling deleteLift"
     - "Remove button calls deleteLift(dayKey) and dismisses the dialog"
@@ -111,6 +112,7 @@ const [editingPTSession, setEditingPTSession] = useState<PTSession | undefined>(
     - src/components/ui/sheet.tsx (PRIMARY ANALOG — radix-ui metapackage import pattern on line 3, Portal+Overlay+Content structure on lines 23-83, Title+Description a11y on lines 106-130)
     - src/components/ui/button.tsx (Button variants — `default` vs `outline`)
     - src/lib/utils.ts (cn helper — confirm signature)
+    - src/index.css (PRE-FLIGHT TOKEN CHECK — grep for `--bg-surface`, `--border-border`, and related CSS custom properties to confirm the Tailwind tokens `bg-surface` and `border-border` resolve to real values before the component body relies on them; if either token is missing, raise early and do NOT author a 180-line component body that will look broken)
     - .planning/phases/04-backup-polish/04-RESEARCH.md Pattern 5 (VERBATIM source for ConfirmDialog body)
     - .planning/phases/04-backup-polish/04-PATTERNS.md §"src/components/ui/confirm-dialog.tsx" for analog mapping
     - src/features/calendar/DayDetail.tsx line 119 (destructive inline-hex precedent: `style={{ color: '#ef4444' }}`)
