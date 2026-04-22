@@ -24,6 +24,7 @@ import {
   getEarliestDayKey,
   type QuadrantState,
 } from '@/services/streak.svc';
+import { useDayKey } from '@/lib/useDayKey';
 import { monthRangeKeys, type MonthCell } from './monthMath';
 import { getTodayEntries, getDailyTotals, type DailyTotals } from '@/services/meals.svc';
 import { getTodaySessions } from '@/services/pt.svc';
@@ -54,14 +55,30 @@ export function useMonthStreakData(year: number, month0: number): MonthStreakDat
   return { data, cells, startKey, endKey };
 }
 
-/** Reactive streak count. Undefined on first paint; caller coalesces to 0. */
+/** Reactive streak count. Undefined on first paint; caller coalesces to 0.
+ *  useDayKey() threads through so midnight rollover re-subscribes the live
+ *  query — closes Phase 3 WR-01 per Phase 4 D-05. */
 export function useCurrentStreakCount(): number | undefined {
-  return useLiveQuery(() => getCurrentStreakCount(), []);
+  const today = useDayKey();
+  return useLiveQuery(() => getCurrentStreakCount(), [today]);
 }
 
 /** Reactive earliest-data dayKey for prev-month nav clamp. */
 export function useEarliestDayKey(): string | null | undefined {
   return useLiveQuery(() => getEarliestDayKey(), []);
+}
+
+/** Reactive today's 4-quadrant completion state. Powers StreakCount's
+ *  "finish today's 4th" subtitle. One range query on a single day is O(1) —
+ *  NOT Anti-Pattern 3 (per the existing StreakCount.tsx:17 comment). Closes
+ *  Phase 3 WR-02 per Phase 4 D-05. */
+export function useTodayQuadrantState(): QuadrantState | undefined {
+  const today = useDayKey();
+  const row = useLiveQuery(
+    () => getStreakDataForRange(today, today),
+    [today],
+  );
+  return row?.get(today);
 }
 
 // ---------- Day Detail composite (Plan 03-04 consumer) ----------
