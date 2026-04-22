@@ -4,9 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#09090b" />
-    <!-- iOS home-screen install support (vite-plugin-pwa does NOT inject these — iOS Safari reads them from HTML, not the manifest). -->
+    <!-- iOS home-screen install support (vite-plugin-pwa does NOT inject these — iOS Safari reads them from HTML, not the manifest).
+         Phase 4 D-14 / RESEARCH Pitfall 2: the apple-prefixed tag is "deprecated" but still required by iOS Safari; we ship both
+         the apple-prefixed and the standardized `mobile-web-app-capable` name for cross-platform correctness. -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="HealthTracker" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
