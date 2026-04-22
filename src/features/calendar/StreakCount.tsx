@@ -4,24 +4,16 @@
 // "broken" — if today isn't 4/4 yet, subtitle is "finish today's 4th to
 // extend" (forward-looking, anti-Pitfall #6). Instant text swap on change
 // (no count-up animation, per anti-motion policy).
+//
+// Phase 4 D-05: today's quadrant state comes from useTodayQuadrantState()
+// (which internally uses useDayKey() for midnight-rollover reactivity).
+// Closes Phase 3 WR-02 — no more stale 4/4 check after local midnight.
 
-import { useLiveQuery } from 'dexie-react-hooks';
-import { useCurrentStreakCount } from './hooks';
-import { getStreakDataForRange } from '@/services/streak.svc';
-import { todayKey } from '@/lib/dayKey';
+import { useCurrentStreakCount, useTodayQuadrantState } from './hooks';
 
 export function StreakCount() {
   const count = useCurrentStreakCount() ?? 0;
-
-  // Dedicated single-day subscription: is today 4/4? Needed to decide whether
-  // the "finish today's 4th to extend" subtitle shows. One range query on a
-  // single day is O(1) — not Anti-Pattern 3 (that's about per-cell amplification).
-  const todaysRow = useLiveQuery(() => {
-    const k = todayKey();
-    return getStreakDataForRange(k, k);
-  }, []);
-  const today = todayKey();
-  const todayState = todaysRow?.get(today);
+  const todayState = useTodayQuadrantState();
   const todayIsComplete =
     !!todayState && todayState.pt && todayState.food && todayState.steps && todayState.lift;
 
