@@ -42,6 +42,8 @@ export default defineConfig({
         name: 'HealthTracker',
         short_name: 'HealthTracker',
         description: 'Personal daily tracker for PT, food, steps, and lifts.',
+        id: '/',                                            // Phase 4 D-15: pin PWA identity (W3C manifest spec)
+        categories: ['health', 'fitness', 'productivity'],  // Phase 4 D-15: install-UI / store category hint
         theme_color: '#09090b',
         background_color: '#09090b',
         display: 'standalone',
