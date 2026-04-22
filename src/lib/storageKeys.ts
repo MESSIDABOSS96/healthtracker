@@ -6,3 +6,4 @@
 export const LAST_OPENED_KEY = 'healthtracker:lastOpenedAt';
 export const PREV_OPENED_KEY = 'healthtracker:prevOpenedAt';
 export const INSTALL_DISMISSED_KEY = 'healthtracker:installDismissedAt';
+export const LAST_EXPORTED_KEY = 'healthtracker:lastExportedAt';
