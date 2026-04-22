@@ -78,10 +78,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. User can tap "Export" in Settings and receive a downloadable JSON file containing the versioned `ExportEnvelope` (`schemaVersion`, `exportedAt`, `appVersion`, `data`, `photos` as base64) — the download works on iOS home-screen PWA using `<a download>` without `showSaveFilePicker`
   2. The PWA install prompt is visible with data-safety framing ("install to protect your data from browser eviction") and the app has valid home-screen icons (192px and 512px) and splash configuration on both iOS and Android
 **Plans**: 5 plans
-  - [ ] 04-01-export-service-PLAN.md — exportAll() service + ExportCard UI + LAST_EXPORTED_KEY + Settings insertion; BACK-01, BACK-02; D-01..D-04, D-09..D-12
-  - [ ] 04-02-midnight-hook-PLAN.md — useDayKey hook + wire through useCurrentStreakCount + new useTodayQuadrantState; closes Phase 3 WR-01/WR-02 per D-05
-  - [ ] 04-03-confirm-dialog-PLAN.md — ConfirmDialog primitive + gate DayDetail Lift delete; closes Phase 3 WR-03 per D-06
-  - [ ] 04-04-manifest-meta-PLAN.md — vite.config.ts manifest.id + categories; index.html standardized mobile-web-app-capable; D-14, D-15
+  - [x] 04-01-export-service-PLAN.md — exportAll() service + ExportCard UI + LAST_EXPORTED_KEY + Settings insertion; BACK-01, BACK-02; D-01..D-04, D-09..D-12
+  - [x] 04-02-midnight-hook-PLAN.md — useDayKey hook + wire through useCurrentStreakCount + new useTodayQuadrantState; closes Phase 3 WR-01/WR-02 per D-05
+  - [x] 04-03-confirm-dialog-PLAN.md — ConfirmDialog primitive + gate DayDetail Lift delete; closes Phase 3 WR-03 per D-06
+  - [x] 04-04-manifest-meta-PLAN.md — vite.config.ts manifest.id + categories; index.html standardized mobile-web-app-capable; D-14, D-15
   - [ ] 04-05-icon-audit-PLAN.md — public/icon-maskable-512.png visual safe-zone audit; D-16
 
 ## Progress
@@ -94,4 +94,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Foundation | 2/3 | In progress | - |
 | 2. Tracking Slices | 0/TBD | Not started | - |
 | 3. Streak Loop | 4/4 | Verifying | - |
-| 4. Backup & Polish | 0/5 | Not started | - |
+| 4. Backup & Polish | 4/5 | In progress | - |
