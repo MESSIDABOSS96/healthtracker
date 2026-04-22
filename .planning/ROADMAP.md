@@ -82,7 +82,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   - [x] 04-02-midnight-hook-PLAN.md — useDayKey hook + wire through useCurrentStreakCount + new useTodayQuadrantState; closes Phase 3 WR-01/WR-02 per D-05
   - [x] 04-03-confirm-dialog-PLAN.md — ConfirmDialog primitive + gate DayDetail Lift delete; closes Phase 3 WR-03 per D-06
   - [x] 04-04-manifest-meta-PLAN.md — vite.config.ts manifest.id + categories; index.html standardized mobile-web-app-capable; D-14, D-15
-  - [ ] 04-05-icon-audit-PLAN.md — public/icon-maskable-512.png visual safe-zone audit; D-16
+  - [x] 04-05-icon-audit-PLAN.md — public/icon-maskable-512.png visual safe-zone audit; D-16
 
 ## Progress
 
@@ -94,4 +94,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Foundation | 2/3 | In progress | - |
 | 2. Tracking Slices | 0/TBD | Not started | - |
 | 3. Streak Loop | 4/4 | Verifying | - |
-| 4. Backup & Polish | 4/5 | In progress | - |
+| 4. Backup & Polish | 5/5 | Complete | 2026-04-21 |
