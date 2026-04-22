@@ -21,6 +21,7 @@
 
 import { useMemo, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';  // NEW — D-06
 import { DayDetailHeader } from './DayDetailHeader';
 import { DayDetailSection } from './DayDetailSection';
 import { useDayDetail } from './hooks';
@@ -53,6 +54,7 @@ export function DayDetail({ dayKey }: DayDetailProps) {
   const [editingLiftNote, setEditingLiftNote] = useState(false);
   // PT edit-sheet: tap a past session's row to open PTSheet in edit mode.
   const [editingPTSession, setEditingPTSession] = useState<PTSession | undefined>(undefined);
+  const [confirmDeleteLift, setConfirmDeleteLift] = useState(false);   // Phase 4 D-06
 
   const foodById = useMemo(() => {
     const m = new Map<string, Food>();
@@ -214,7 +216,7 @@ export function DayDetail({ dayKey }: DayDetailProps) {
               <button
                 type="button"
                 aria-label="Delete lift check-in"
-                onClick={() => deleteLift(dayKey)}
+                onClick={() => setConfirmDeleteLift(true)}
                 style={{ color: '#ef4444' }}
                 className="text-sm px-2 py-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
               >
@@ -240,6 +242,18 @@ export function DayDetail({ dayKey }: DayDetailProps) {
           </div>
         )}
       </DayDetailSection>
+
+      {/* Phase 4 D-06 — destructive confirm for Lift delete (WR-03 closure) */}
+      <ConfirmDialog
+        open={confirmDeleteLift}
+        onOpenChange={setConfirmDeleteLift}
+        title="Remove lift check-in?"
+        body={`Remove lift check-in for ${dayKey}? Note will be deleted too.`}
+        confirmLabel="Remove"
+        cancelLabel="Cancel"
+        destructive
+        onConfirm={() => deleteLift(dayKey)}
+      />
     </div>
   );
 }
