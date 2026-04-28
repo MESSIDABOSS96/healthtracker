@@ -24,6 +24,7 @@ function migrate(s: any): Store {
         typeof raw.lifted === 'boolean'
           ? raw.lifted
           : Array.isArray(raw.liftDone) && raw.liftDone.length > 0,
+      iced: typeof raw.iced === 'boolean' ? raw.iced : false,
       meals: Array.isArray(raw.meals) ? raw.meals : [],
     }
   }

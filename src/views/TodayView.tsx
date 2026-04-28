@@ -5,6 +5,7 @@ import { currentStreak } from '../lib/streak'
 import { PTSection } from '../features/PTSection'
 import { LiftSection } from '../features/LiftSection'
 import { FoodSection } from '../features/FoodSection'
+import { IceSection } from '../features/IceSection'
 
 type Props = { dayKey?: string; onBack?: () => void }
 
@@ -47,17 +48,23 @@ export function TodayView({ dayKey: passedKey, onBack }: Props) {
           <div>
             <div className="font-semibold text-good">Day complete</div>
             <div className="text-sm text-text-dim">
-              All three areas done. Nice work.
+              All four areas done. Nice work.
             </div>
           </div>
         </div>
       )}
 
-      <ProgressStrip pt={status.pt} lift={status.lift} food={status.food} />
+      <ProgressStrip
+        pt={status.pt}
+        lift={status.lift}
+        food={status.food}
+        ice={status.ice}
+      />
 
       <PTSection dayKey={dayKey} day={day} />
       <LiftSection dayKey={dayKey} day={day} />
       <FoodSection dayKey={dayKey} day={day} />
+      <IceSection dayKey={dayKey} day={day} />
     </div>
   )
 }
@@ -72,14 +79,19 @@ function StreakPill({ streak }: { streak: number }) {
   )
 }
 
-function ProgressStrip({ pt, lift, food }: { pt: boolean; lift: boolean; food: boolean }) {
+function ProgressStrip({
+  pt, lift, food, ice,
+}: {
+  pt: boolean; lift: boolean; food: boolean; ice: boolean
+}) {
   const segs: { name: string; done: boolean }[] = [
     { name: 'PT', done: pt },
     { name: 'Lift', done: lift },
     { name: 'Food', done: food },
+    { name: 'Ice', done: ice },
   ]
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className="grid grid-cols-4 gap-2">
       {segs.map((s) => (
         <div
           key={s.name}

@@ -19,6 +19,7 @@ export type Meal = {
 export type DayLog = {
   ptDone: string[]
   lifted: boolean
+  iced: boolean
   meals: Meal[]
 }
 
@@ -37,6 +38,7 @@ export type Store = {
 export const emptyDay = (): DayLog => ({
   ptDone: [],
   lifted: false,
+  iced: false,
   meals: [],
 })
 

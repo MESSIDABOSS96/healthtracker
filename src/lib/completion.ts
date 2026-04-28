@@ -17,6 +17,10 @@ export function liftStatus(day: DayLog, _config: Config): AreaStatus {
   return { done: !!day.lifted, ratio: day.lifted ? 1 : 0 }
 }
 
+export function iceStatus(day: DayLog, _config: Config): AreaStatus {
+  return { done: !!day.iced, ratio: day.iced ? 1 : 0 }
+}
+
 export type FoodStatus = AreaStatus & {
   totals: Macros
   proteinRatio: number
@@ -38,6 +42,7 @@ export type DayStatus = {
   pt: boolean
   lift: boolean
   food: boolean
+  ice: boolean
   foodRatio: number
   complete: boolean
   count: number
@@ -47,13 +52,15 @@ export function dayStatus(day: DayLog, config: Config): DayStatus {
   const pt = ptStatus(day, config).done
   const lift = liftStatus(day, config).done
   const food = foodStatus(day, config)
-  const count = (pt ? 1 : 0) + (lift ? 1 : 0) + (food.done ? 1 : 0)
+  const ice = iceStatus(day, config).done
+  const count = (pt ? 1 : 0) + (lift ? 1 : 0) + (food.done ? 1 : 0) + (ice ? 1 : 0)
   return {
     pt,
     lift,
     food: food.done,
+    ice,
     foodRatio: food.proteinRatio,
-    complete: count === 3,
+    complete: count === 4,
     count,
   }
 }

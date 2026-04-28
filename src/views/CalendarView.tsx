@@ -103,6 +103,7 @@ export function CalendarView({ onOpenDay }: Props) {
                       lift={status.lift}
                       foodDone={status.food}
                       foodFill={status.foodRatio}
+                      ice={status.ice}
                     />
                   </div>
                 )}
@@ -131,6 +132,7 @@ type CellRingProps = {
   lift: boolean
   foodDone: boolean
   foodFill: number
+  ice: boolean
 }
 
 function RingForCell(props: CellRingProps) {
@@ -143,13 +145,13 @@ function RingForCell(props: CellRingProps) {
   )
 }
 
-function RingInner({ pt, lift, foodDone, foodFill }: CellRingProps) {
+function RingInner({ pt, lift, foodDone, foodFill, ice }: CellRingProps) {
   const stroke = 4
   const r = (44 - stroke) / 2
   const cx = 22
-  const offsets = [0, -33.333, -66.666]
-  const segLen = 28
-  const allDone = pt && lift && foodDone
+  const offsets = [0, -25, -50, -75]
+  const segLen = 20
+  const allDone = pt && lift && foodDone && ice
 
   const segments = [
     { fill: pt ? 1 : 0, complete: pt },
@@ -158,6 +160,7 @@ function RingInner({ pt, lift, foodDone, foodFill }: CellRingProps) {
       fill: foodDone ? 1 : Math.max(0, Math.min(1, foodFill)),
       complete: foodDone,
     },
+    { fill: ice ? 1 : 0, complete: ice },
   ]
 
   return (
