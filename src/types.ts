@@ -17,14 +17,11 @@ export type Meal = {
 } & Macros
 
 export type DayLog = {
-  ptDone: string[]
-  lifted: boolean
-  iced: boolean
+  ptNotes: string
   meals: Meal[]
 }
 
 export type Config = {
-  ptExercises: string[]
   macroTargets: Macros
   foodLibrary: LibraryFood[]
 }
@@ -36,9 +33,7 @@ export type Store = {
 }
 
 export const emptyDay = (): DayLog => ({
-  ptDone: [],
-  lifted: false,
-  iced: false,
+  ptNotes: '',
   meals: [],
 })
 
@@ -56,7 +51,6 @@ export const sumMacros = (meals: Meal[]): Macros =>
 export const defaultStore = (): Store => ({
   version: 1,
   config: {
-    ptExercises: [],
     macroTargets: { cals: 2200, p: 180, c: 220, f: 70 },
     foodLibrary: [],
   },

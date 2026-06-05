@@ -19,12 +19,7 @@ function migrate(s: any): Store {
   const days: Record<string, DayLog> = {}
   for (const [k, raw] of Object.entries(s.days ?? {}) as [string, any][]) {
     days[k] = {
-      ptDone: Array.isArray(raw.ptDone) ? raw.ptDone : [],
-      lifted:
-        typeof raw.lifted === 'boolean'
-          ? raw.lifted
-          : Array.isArray(raw.liftDone) && raw.liftDone.length > 0,
-      iced: typeof raw.iced === 'boolean' ? raw.iced : false,
+      ptNotes: typeof raw.ptNotes === 'string' ? raw.ptNotes : '',
       meals: Array.isArray(raw.meals) ? raw.meals : [],
     }
   }
@@ -32,7 +27,6 @@ function migrate(s: any): Store {
   return {
     version: 1,
     config: {
-      ptExercises: Array.isArray(cfg.ptExercises) ? cfg.ptExercises : [],
       macroTargets: cfg.macroTargets ?? defaultStore().config.macroTargets,
       foodLibrary: Array.isArray(cfg.foodLibrary) ? cfg.foodLibrary : [],
     },

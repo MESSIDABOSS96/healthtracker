@@ -12,16 +12,6 @@ export function SettingsView() {
         <h1 className="text-2xl font-semibold tracking-tight">Configure your tracker</h1>
       </header>
 
-      <ExerciseListPanel
-        title="PT exercises"
-        description="Each one becomes a checkbox on Today. Reorder with the arrows."
-        items={store.config.ptExercises}
-        onChange={(items) =>
-          setStore((s) => ({ ...s, config: { ...s.config, ptExercises: items } }))
-        }
-        placeholder="e.g. Wrist flexor stretch"
-      />
-
       <MacroTargetsPanel
         targets={store.config.macroTargets}
         onChange={(t) =>
@@ -38,98 +28,6 @@ export function SettingsView() {
 
       <DangerPanel />
     </div>
-  )
-}
-
-function ExerciseListPanel({
-  title, description, items, onChange, placeholder,
-}: {
-  title: string
-  description: string
-  items: string[]
-  onChange: (items: string[]) => void
-  placeholder: string
-}) {
-  const [draft, setDraft] = useState('')
-  const add = () => {
-    const v = draft.trim()
-    if (!v) return
-    if (items.includes(v)) {
-      setDraft('')
-      return
-    }
-    onChange([...items, v])
-    setDraft('')
-  }
-  const remove = (i: number) => onChange(items.filter((_, idx) => idx !== i))
-  const move = (i: number, dir: -1 | 1) => {
-    const j = i + dir
-    if (j < 0 || j >= items.length) return
-    const copy = items.slice()
-    ;[copy[i], copy[j]] = [copy[j], copy[i]]
-    onChange(copy)
-  }
-
-  return (
-    <Panel>
-      <div className="mb-3">
-        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-        <p className="text-sm text-text-dim">{description}</p>
-      </div>
-
-      <ul className="flex flex-col gap-2 mb-3">
-        {items.map((name, i) => (
-          <li
-            key={i}
-            className="flex items-center gap-2 rounded-lg bg-panel-2 border border-border px-3 py-2"
-          >
-            <span className="flex-1">{name}</span>
-            <button
-              onClick={() => move(i, -1)}
-              className="text-muted hover:text-text disabled:opacity-30"
-              disabled={i === 0}
-              aria-label="Move up"
-            >↑</button>
-            <button
-              onClick={() => move(i, 1)}
-              className="text-muted hover:text-text disabled:opacity-30"
-              disabled={i === items.length - 1}
-              aria-label="Move down"
-            >↓</button>
-            <button
-              onClick={() => remove(i)}
-              className="text-muted hover:text-warn"
-              aria-label={`Remove ${name}`}
-            >✕</button>
-          </li>
-        ))}
-        {items.length === 0 && (
-          <li className="text-sm text-muted">No exercises yet.</li>
-        )}
-      </ul>
-
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault()
-          add()
-        }}
-      >
-        <input
-          className="flex-1 bg-panel-2 border border-border rounded-lg px-3 py-2 outline-none focus:border-accent"
-          placeholder={placeholder}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        <button
-          type="submit"
-          className="rounded-lg bg-accent text-white px-4 py-2 hover:bg-accent-dim transition-colors disabled:opacity-50"
-          disabled={!draft.trim()}
-        >
-          Add
-        </button>
-      </form>
-    </Panel>
   )
 }
 
@@ -150,7 +48,8 @@ function MacroTargetsPanel({
       <div className="mb-3">
         <h2 className="text-lg font-semibold tracking-tight">Macro targets</h2>
         <p className="text-sm text-text-dim">
-          Food section completes when all four are hit.
+          The day's circle fills when protein and carbs are hit and calories
+          aren't over. Fat is tracked but doesn't gate it.
         </p>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

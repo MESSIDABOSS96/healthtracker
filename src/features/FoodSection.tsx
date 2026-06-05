@@ -78,8 +78,8 @@ export function FoodSection({ dayKey, day }: Props) {
         done={status.done}
         detail={
           status.calsExceeded
-            ? `${Math.round(totals.p)} / ${targets.p}g protein · over kcal`
-            : `${Math.round(totals.p)} / ${targets.p}g protein`
+            ? `${Math.round(totals.p)}/${targets.p}P · ${Math.round(totals.c)}/${targets.c}C · over kcal`
+            : `${Math.round(totals.p)}/${targets.p}P · ${Math.round(totals.c)}/${targets.c}C`
         }
       />
 

@@ -98,13 +98,7 @@ export function CalendarView({ onOpenDay }: Props) {
               >
                 {c.inMonth && (
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <RingForCell
-                      pt={status.pt}
-                      lift={status.lift}
-                      foodDone={status.food}
-                      foodFill={status.foodRatio}
-                      ice={status.ice}
-                    />
+                    <RingForCell done={status.food} fill={status.foodRatio} />
                   </div>
                 )}
                 <span
@@ -128,11 +122,8 @@ export function CalendarView({ onOpenDay }: Props) {
 }
 
 type CellRingProps = {
-  pt: boolean
-  lift: boolean
-  foodDone: boolean
-  foodFill: number
-  ice: boolean
+  done: boolean
+  fill: number
 }
 
 function RingForCell(props: CellRingProps) {
@@ -145,23 +136,12 @@ function RingForCell(props: CellRingProps) {
   )
 }
 
-function RingInner({ pt, lift, foodDone, foodFill, ice }: CellRingProps) {
+function RingInner({ done, fill }: CellRingProps) {
   const stroke = 4
   const r = (44 - stroke) / 2
   const cx = 22
-  const offsets = [0, -25, -50, -75]
-  const segLen = 20
-  const allDone = pt && lift && foodDone && ice
-
-  const segments = [
-    { fill: pt ? 1 : 0, complete: pt },
-    { fill: lift ? 1 : 0, complete: lift },
-    {
-      fill: foodDone ? 1 : Math.max(0, Math.min(1, foodFill)),
-      complete: foodDone,
-    },
-    { fill: ice ? 1 : 0, complete: ice },
-  ]
+  const visible = 100 * (done ? 1 : Math.max(0, Math.min(1, fill)))
+  const color = done ? 'var(--color-good)' : 'var(--color-accent)'
 
   return (
     <>
@@ -172,30 +152,19 @@ function RingInner({ pt, lift, foodDone, foodFill, ice }: CellRingProps) {
         strokeWidth={stroke}
         strokeOpacity={0.45}
       />
-      {segments.map((seg, i) => {
-        const visible = segLen * seg.fill
-        if (visible <= 0.01) return null
-        const color = allDone
-          ? 'var(--color-good)'
-          : seg.complete
-          ? 'var(--color-good)'
-          : 'var(--color-accent)'
-        return (
-          <circle
-            key={i}
-            cx={cx} cy={cx} r={r}
-            fill="none"
-            stroke={color}
-            strokeWidth={stroke}
-            strokeLinecap="round"
-            pathLength={100}
-            strokeDasharray={`${visible} ${100 - visible}`}
-            strokeDashoffset={offsets[i]}
-            transform={`rotate(-90 ${cx} ${cx})`}
-            style={{ transition: 'stroke 200ms ease, stroke-dasharray 200ms ease' }}
-          />
-        )
-      })}
+      {visible > 0.01 && (
+        <circle
+          cx={cx} cy={cx} r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          pathLength={100}
+          strokeDasharray={`${visible} ${100 - visible}`}
+          transform={`rotate(-90 ${cx} ${cx})`}
+          style={{ transition: 'stroke 200ms ease, stroke-dasharray 200ms ease' }}
+        />
+      )}
     </>
   )
 }
