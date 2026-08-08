@@ -1,82 +1,56 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: executing
-stopped_at: Phase 4 wave 1 — 04-01..04-04 merged, 04-05 awaiting user audit
-last_updated: "2026-04-22T02:24:13.909Z"
-last_activity: 2026-04-21
+milestone: v2.0
+milestone_name: Duo Redesign
+status: defining-requirements
+stopped_at: Milestone v2.0 started — defining requirements
+last_updated: "2026-08-08T00:00:00.000Z"
+last_activity: 2026-08-08
 progress:
-  total_phases: 4
-  completed_phases: 3
-  total_plans: 17
-  completed_plans: 16
-  percent: 94
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-19)
+See: .planning/PROJECT.md (updated 2026-08-08)
 
-**Core value:** Visual consistency feedback that makes logging feel like a win — the 4-segment day indicator and calendar streak loop drive daily return.
-**Current focus:** Phase 04 — backup-polish
+**Core value:** Consistency through satisfying daily closure and visible long-term progress — AI-parsed food logging, one-tap lift/cardio, weight trends, ring-style day closure.
+**Current focus:** v2.0 Duo Redesign — defining requirements
 
 ## Current Position
 
-Phase: 4
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-04-21
-
-Progress: [███████░░░] 67%
-
-## Performance Metrics
-
-**Velocity:**
-
-- Total plans completed: 12
-- Average duration: -
-- Total execution time: 0 hours
-
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 01 | 3 | - | - |
-| 02 | 5 | - | - |
-| 03 | 4 | - | - |
-
-**Recent Trend:**
-
-- Last 5 plans: -
-- Trend: -
-
-*Updated after each plan completion*
-| Phase 01-foundation P01 | 8min | 3 tasks | 23 files |
-| Phase 01-foundation P02 | 5min | 3 tasks | 5 files |
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-08-08 — Milestone v2.0 started
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
+Decisions are logged in PROJECT.md Key Decisions table. Locked for v2.0 (2026-08-08):
 
-- Roadmap: Granularity is coarse — 4 phases total
-- Roadmap: Phase 2 plans should be structured for parallel execution (PT plans independent of Food+Steps+Lifts+Goals plans)
-- Open: Segment completion definition ("any log" vs "hit target") must be resolved before streak.svc.ts is written in Phase 3
-- Open: PT rest day affordance model (isRestDay flag vs separate record) must be decided before Phase 3
-- Plan 01-01: Pinned Vite ^7 (not ^8) per CLAUDE.md vite-plugin-pwa peer-dep policy
-- Plan 01-01: shadcn/ui Button/Card/Sheet authored manually as Phase-1 ports (no Radix dialog yet); Sheet upgraded to Radix in Phase 2 when first consumed
-- Plan 01-01: @types/node added so vite.config.ts can use fileURLToPath for the @/* alias (TS paths don't propagate to Rollup)
-- Plan 01-01: Banner uses role=region + aria-label rather than role=banner to avoid duplicate landmarks with AppShell <header>
-- Plan 01-02: Used quoted property names in version(1).stores({...}) for grep-ability — semantically identical to bare identifiers
-- Plan 01-02: Reworded dayKey.ts header comments to avoid literal forbidden-API tokens (toISOString, new Date(key)) so strict grep acceptance criteria pass while preserving Pitfall #4 safety documentation
-- Plan 01-02: dayKey.smoke.ts is unimported (tree-shakable); Plan 01-03 must wire runDayKeySmoke() into initApp() under import.meta.env.DEV
-- Plan 01-02: CLAUDE.md rule #5 still says JPEG@70% — Plan 01-03 must update to WebP@80% per CONTEXT.md D-07
-- Plan 01-02: createImageBitmap uses imageOrientation: 'from-image' (Phase 1 inclusion) so iPhone EXIF-rotated photos render right-side-up without canvas math
+- Two independent local installs — no backend, no shared data
+- AI food parsing: Claude Haiku direct-from-client (user API key in settings), local structured parser fallback offline
+- Smart auto-library replaces manual food creation (auto-save + dedupe parsed items, one-tap re-log)
+- Manual one-tap lift + cardio check-offs; data model must accommodate future Hevy API sync (source field)
+- Drop PT (~940 LOC) and steps tracking
+- Day closure = calories/macros logged + lift + cardio addressed (ring-style; exact semantics + visual in design phase)
+- Two-tab IA: Daily + Dashboard
+- Design guided by .agents/skills/{apple-design,pick-ui-library,improve-animations}
+
+### v1 Carry-forward (technical)
+
+- Dexie schema is append-only — v2 changes go in new `db.version(N)` blocks; existing 7 stores stay declared
+- dayKey.ts, photoStore.ts (OPFS WebP), PWA shell, persist() startup call all reusable as-is
+- Services layer (meals.svc, goals.svc, export.svc) largely reusable; streak.svc semantics change with closure model
+- ~3,500 of 5,400 LOC (presentation layer) expected to be rebuilt
 
 ### Pending Todos
 
@@ -84,23 +58,19 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 3 prerequisite: Segment completion definition must be locked (recommend: any log for PT/steps/lifts; any meal entry for food) before streak.svc.ts design
-- Phase 3 prerequisite: DayCell SVG arc design and color palette for 0/1/2/3/4 segment states need explicit design decisions
+- Closure semantics detail (does "calories/macros logged" mean any entry or hitting targets?) — lock during discuss/design phase
+- Ring visual design (true rings vs other closure metaphor) — lock during UI phase
+- AI parse prompt + output schema (strict JSON via structured outputs) — design during planning
 
 ## Deferred Items
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| Backup | BACK-03: JSON import/restore | v2 | Roadmap |
-| Insights | INSIGHT-01 through INSIGHT-04 | v2 | Roadmap |
-| Food | FOOD-09, FOOD-10: meal templates/combos | v2 | Roadmap |
-| PWA | SETUP-06: in-app SW update prompt | v2 | Roadmap |
-| Backup | BACK-04: weekly export auto-prompt | v2 | Roadmap |
+| Integrations | Hevy API auto-sync for lift/cardio | Requires Hevy Pro | v2.0 scoping |
+| Social | Shared progress view between the two users | Deliberate | v2.0 scoping |
+| Backup | Weekly export auto-prompt | Carry from v1 | v1 roadmap |
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 4 context gathered
-Resume file: --resume-file
-
-**Planned Phase:** 04 (backup-polish) — 5 plans — 2026-04-22T02:24:13.901Z
+Last session: 2026-08-08
+Stopped at: Milestone v2.0 initialized

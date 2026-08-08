@@ -2,81 +2,91 @@
 
 ## What This Is
 
-A fully-local PWA health tracker for a single user (Anirudh) covering four daily tracking areas: PT exercises (for tendonitis/tennis elbow recovery), food and macros (for an active cut), manual activity/steps, and a lightweight daily check-in for lifts (which are tracked in detail elsewhere). The central motivator is a calendar view where each day is a 4-segment indicator that fills progressively as each tracking area gets logged — whole-day "complete" cells only appear when all four areas are logged that day.
+A fully-local PWA health tracker used independently by two friends (Anirudh + one friend), each on their own phone with their own data — no backend, no sync, no accounts. v2 centers on three things: calorie/macro tracking with AI-parsed freeform entry and a self-building food library, one-tap lift and cardio check-offs, and body-weight tracking over time. The central motivator is an Apple-Fitness-style daily closure loop — a day "closes" when food is logged and lift/cardio are checked off — plus a Dashboard that visualizes weight, eating, and training consistency over weeks and months.
 
 ## Core Value
 
-**Visual consistency feedback that makes logging feel like a win.** If the app fails to track anything else but the streak/calendar loop reliably motivates daily logging, it has done its job. Every UX tradeoff should bias toward low-friction entry and satisfying visual feedback.
+**Consistency through satisfying daily closure and visible long-term progress.** If closing the day reliably motivates both users to log food, train, and weigh in — and the Dashboard makes progress feel real over time — the product is succeeding. Every UX tradeoff biases toward **low-friction entry** (speak/type and done) and **clean, sleek visual feedback**.
 
 ## Requirements
 
-### Validated
+### Validated (carried from v1.0)
 
-<!-- Shipped and confirmed valuable. -->
+- [x] Installable PWA with offline support (IndexedDB storage, no server) — Phase 1
+- [x] Dark mode, minimal/calm visual aesthetic — Phase 1 (v2 rework: cleaner, Apple-design-informed)
+- [x] Macro entry with daily target tracking (calories, protein, carbs, fat) — Phase 2 (v2 rework: AI-parsed entry)
+- [x] Daily lift check-in (one-tap) — Phase 2 (v2: joined by cardio check-off)
+- [x] Calendar streak history view — Phase 3 (v2 rework: ring-closure model)
+- [x] Configurable daily targets — Phase 2
+- [x] Manual JSON export — Phase 4
 
-- [x] Installable PWA with offline support (IndexedDB storage, no server) — Validated in Phase 1: Foundation (carry-forward HUMAN-UAT for on-device install confirmation, see `01-HUMAN-UAT.md`)
-- [x] Dark mode, minimal/calm visual aesthetic throughout — Validated in Phase 1: Foundation (Tailwind v4 tokens locked, dark class belt-and-suspenders in index.html + main.tsx)
+### Active (v2.0)
 
-### Active
-
-<!-- Current scope. Building toward these. -->
-
-- [ ] Daily 4-segment streak indicator (PT / meals / steps / lifts) — partial-fill by area, full when all four logged
-- [ ] Calendar/month view showing streak history at a glance
-- [ ] PT routine management — define reusable templates (exercise + target sets/reps), log sessions against templates with actuals + notes
-- [ ] Food logging via a personal food library that grows over time — add a food once (incl. optional photo) and quickly re-log it later
-- [ ] Per-meal macro entry (calories, protein, carbs, fat) with daily target tracking and progress bars
-- [ ] Manual step entry per day with a configurable daily step goal
-- [ ] Daily lift check-in (yes/no + optional short note) — no sets/reps in this app
-- [ ] Configurable daily targets for calories, protein, carbs, fat, and steps
-- [ ] Manual JSON export/import for backup and device migration
+- [ ] AI-parsed food entry — speak or type freeform ("200g chicken, 31g protein per 100g") and Claude computes calories + macros; structured local parser as offline fallback
+- [ ] Smart auto-library — every parsed item is saved automatically; repeat items (eggs, snacks) re-log with one tap; no manual food creation flow
+- [ ] One-tap lift check-off and one-tap cardio check-off per day (Hevy auto-sync accommodated in the data model for later)
+- [ ] Daily weight entry with long-term trend visualization
+- [ ] Daily closure loop — a day "closes" when calories/macros are logged + lift + cardio are addressed (Apple ring concept; exact visual TBD in design)
+- [ ] Daily tab — today's closure state + all logging entry points
+- [ ] Dashboard tab — weight trend, eating adherence, and lift/cardio consistency over weeks/months
+- [ ] JSON export/import covering all v2 data
 
 ### Out of Scope
 
-<!-- Explicit boundaries. Includes reasoning to prevent re-adding. -->
-
-- Full lift tracking (sets/reps/weight) — user has another platform for this; avoiding duplicate entry
-- User accounts, authentication, and multi-user support — this is a personal tool; auth adds friction with no payoff
-- Cloud sync or a hosted backend — fully-local IndexedDB is simpler and sufficient given manual backup
-- Apple Health / Google Fit integration — manual entry is fine for v1 and avoids platform-specific complexity
-- Barcode scanning and third-party nutrition API lookups — custom food library with recall is lighter and was the user's explicit preference
-- Social features, sharing, leaderboards — solo motivation tool, not a social product
-- Bodyweight / measurements tracking — not mentioned as a motivator; can be revisited post-v1 if it aids the cut
-- Hydration, sleep, mood tracking — scope creep risk; add only if the streak loop demands it
+- PT rehab tracking — v1 feature, dropped in v2: no longer a daily tracking need; ~940 LOC removed
+- Steps tracking — dropped in v2: cardio check-off replaces it as the movement signal
+- Shared data / seeing each other's progress — deliberately deferred; each user runs their own local install
+- Backend, auth, cloud sync — two independent local installs; no server
+- Hevy API auto-sync — requires Hevy Pro (neither user has it); data model must accommodate it later
+- Barcode scanning / third-party nutrition DBs — AI parsing + auto-library covers entry friction
+- Full lift tracking (sets/reps/weight) — tracked in Hevy
+- Social features, notifications, streak freezes, hydration/sleep/mood — scope discipline
 
 ## Context
 
-- **User profile**: Consistent lifter (years of experience). Developed tendonitis in knees and tennis elbow, now required to do PT for recovery. Simultaneously attempting a cut (active calorie deficit).
-- **Primary motivation problem**: Staying consistent with PT and cut logging. Has tried existing free tracking apps and found them unengaging. Reports that visual calendar streaks on his current lift-tracking platform meaningfully drive his consistency — this is the feature pattern to replicate.
-- **Usage context**: Will use on phone primarily (mid-day meal logging, post-session PT logging) and occasionally on laptop. PWA with home-screen install is the target delivery format.
-- **Technical environment**: Greenfield project in `/Users/anirudhchatterjee/dev/healthtracker`. No existing code, no stack decisions pre-made. Tech stack recommendation deferred to research phase.
-- **Philosophy**: "Functionality tool for me" — user prioritizes shipping and using the thing over polish. Iterate based on real daily use, not upfront design.
+- **Users**: Two friends, both consistent lifters, both cutting/tracking macros. Each installs the PWA on their own phone. Both use Hevy (free tier) for detailed lift tracking.
+- **Motivation problem**: Staying consistent with calorie/macro logging and training. The Apple Fitness ring-closing pattern is the explicit inspiration — daily closure + long-term visual progress to gamify consistency.
+- **AI parsing**: Anthropic API (Claude Haiku) called directly from the client with a user-supplied API key stored on-device. ~$0.001/parse; only new items need parsing (auto-library covers repeats). Users buy $5 minimum API credit that lasts years.
+- **Design direction**: Clean, sleek, Apple-design-informed. Emil Kowalski skills installed at `.agents/skills/` (apple-design, pick-ui-library, improve-animations) — consult during UI phases.
+- **v1 carry-forward**: Dexie schema (append-only versioning), dayKey utilities, OPFS photo store, PWA shell, services layer are reusable; most of the presentation layer (~3,500 LOC) gets rebuilt.
 
 ## Constraints
 
-- **Tech stack**: PWA delivery required — must be installable to phone home screen and work offline. Stack choice open, picked in research phase.
-- **Storage**: IndexedDB only (via a library like Dexie or equivalent). No server, no external DB. All data lives on-device.
-- **Auth**: None. Single-user personal app; auth is explicitly out of scope.
-- **Timeline**: Fast MVP — user wants to be using it ASAP. Favor "working and simple" over "polished and complete."
-- **Design**: Dark mode, minimal and calm. Low visual noise. Motivation comes from the streak loop, not loud UI.
-- **Entry friction**: Every logging interaction must be low-friction. Food library recall, PT templates, and one-tap daily lift check-in all exist to serve this constraint.
-- **Data durability**: Fully-local storage means device loss = data loss unless the user manually exports. UX must make the export/backup flow obvious and painless.
+- **Tech stack**: Keep React 19 + Vite 7 + TS + Dexie 4 + Tailwind 4 stack. Schema changes via appended `db.version(N)` blocks only.
+- **Storage**: IndexedDB (Dexie) on-device; OPFS for photos. No server.
+- **AI calls**: Anthropic API direct-from-browser with user's own key; must degrade gracefully offline (structured local parser fallback + auto-library one-tap re-logs work offline).
+- **Entry friction**: Speak/type-and-done is the bar for food; one tap for lift/cardio; one number for weight.
+- **Data durability**: Manual JSON export/import remains the backup story; make it obvious.
+- **Two-person usability**: Everything must make sense to a second user who didn't build it — sensible empty states, no Anirudh-specific assumptions.
 
 ## Key Decisions
 
-<!-- Decisions that constrain future work. Add throughout project lifecycle. -->
-
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Fully-local PWA, IndexedDB only | Solo use + ship-fast priority + no auth needed; server is unnecessary complexity | — Pending |
-| Custom food library (no third-party nutrition API) | User explicitly prefers adding his own foods; he eats repeat meals ("4 servings of the same ground beef I always use"); no external dependency risk | — Pending |
-| Templates-combo PT model | Balances structure (track progress numerically) with low friction (tick-off + actuals); user has recurring prescribed exercises | — Pending |
-| Lifts are daily check-in only | User tracks lifts in detail on another platform; re-tracking would add friction without value | — Pending |
-| Manual JSON export/import for backup | Simplest backup model that gives user control; auto-sync would require a backend | — Pending |
-| Dark mode + minimal aesthetic | User-stated preference; aligns with "calm and low cognitive load" design philosophy | — Pending |
-| Tech stack deferred to research | User has no preference; research phase will evaluate modern PWA stacks against fast-MVP + solo-dev constraints | ✓ Locked in Phase 1: React 19 + Vite 7 + TypeScript + Dexie 4 + Tailwind v4 + shadcn/ui (see research/STACK.md) |
-| Photos: WebP @ 80%, ≤800×800, OPFS-stored, photoKey reference in Dexie | Raw iPhone photos fill quota and crash tab; OPFS keeps Dexie row size flat; WebP@80% beats JPEG@70% on visual quality at lower bytes (CONTEXT.md D-07) | ✓ Validated in Phase 1: Foundation — photoStore.ts ships; CLAUDE.md rule #5 corrected from JPEG@70% |
-| three-layer iOS eviction defense (persist + install banner + eviction banner) | Pitfall #3: iOS Safari evicts IndexedDB after 7 days inactivity; persist() alone insufficient because iOS still drops if user dismisses or uses Safari rarely | ✓ Validated in Phase 1: Foundation (on-device install confirmation carry-forward in 01-HUMAN-UAT.md) |
+| Fully-local PWA, IndexedDB only | Solo use + ship-fast priority; server unnecessary | ✓ Validated v1; retained for v2 (separate installs per user) |
+| Tech stack: React 19 + Vite 7 + TS + Dexie 4 + Tailwind 4 | Locked in v1 Phase 1 research | ✓ Locked; carried to v2 |
+| Photos: WebP@80% ≤800×800 in OPFS, photoKey in Dexie | Quota safety | ✓ Validated v1 |
+| v2: two independent local installs, no shared data | Users chose individual use over accountability view; keeps zero-backend architecture | ✓ Locked 2026-08-08 |
+| v2: AI food parsing via Claude Haiku + local structured fallback | ~$0.001/parse, freeform speak/type entry; offline fallback keeps PWA functional | ✓ Locked 2026-08-08 |
+| v2: smart auto-library replaces manual food creation | Parsed items auto-saved and deduped; removes v1's manual food-entry friction | ✓ Locked 2026-08-08 |
+| v2: manual one-tap lift + cardio check-offs; Hevy sync deferred | Hevy API requires Pro (neither user has it); model check-offs so a sync source can set them later | ✓ Locked 2026-08-08 |
+| v2: drop PT and steps tracking | New goals are food/lift/cardio/weight; PT rehab no longer tracked; cardio replaces steps | ✓ Locked 2026-08-08 |
+| v2: day closure = food logged + lift + cardio addressed | Apple-ring-style closure is the core motivator; exact completion semantics locked in design phase | ✓ Locked 2026-08-08 |
+| v2: Daily + Dashboard two-tab IA | Daily = today's closure + logging; Dashboard = long-term weight/eating/training trends | ✓ Locked 2026-08-08 |
+
+## Current Milestone: v2.0 Duo Redesign
+
+**Goal:** Redesign HealthTracker so two friends can each use it daily for calorie/macro tracking (AI-parsed entry + smart auto-library), lift/cardio check-offs, and weight tracking — motivated by an Apple-Fitness-style daily closure loop and a long-term progress Dashboard, in a clean, sleek, animation-polished UI.
+
+**Target features:**
+- AI-parsed freeform food entry (speak/type) with local structured fallback + on-device API key settings
+- Smart auto-library with one-tap re-logging of repeat items (replaces manual food library)
+- One-tap lift and cardio daily check-offs (Hevy-sync-ready data model)
+- Daily weight logging + long-term trend chart
+- Daily closure loop (ring-style concept) replacing the 4-quadrant streak calendar
+- Two-tab IA: Daily (today) + Dashboard (weight / eating / training over time)
+- Removal of PT and steps features; JSON export/import updated for v2 schema
+- Clean, sleek redesign guided by apple-design / pick-ui-library / improve-animations skills
 
 ## Evolution
 
@@ -97,13 +107,7 @@ This document evolves at phase transitions and milestone boundaries.
 
 ## Current State
 
-**Phase 1: Foundation — Complete (2026-04-21).** Installable PWA shell ships: Vite 7 + React 19 + TS scaffold, Dexie v1 (7 stores), dayKey utility (Pitfall #4 guarded with dev-only smoke), OPFS photoStore (WebP@80%), navigator.storage.persist() on every startup, vite-plugin-pwa generateSW + autoUpdate, Install + Eviction banners, Settings version line. Dark base layout per UI-SPEC. Carry-forward: on-device install/offline confirmation (01-HUMAN-UAT.md, 4 items).
-
-**Phase 2: Tracking Slices — Complete (2026-04-21).** All four daily tracking areas usable: PT (templates → sessions with previous-session hint, pain rating, notes), Food (create with OPFS photo, tap-to-log via Recent/Frequent chips, inline-edit, bucketed today list, live macro bars), Steps (inline input + bar), Lift (toggle + conditional note). Goals form in Settings with RHF+Zod validation and pre-seeded D-13 defaults. TodayScreen renders 4 live sections. 22 REQs architecturally verified (PT-01..07, FOOD-01..08, STEPS-01..02, LIFT-01..02, SET-01..03); FOOD-02 locked to create+delete for v1 per D-17 (edit deferred). Code review: 0 critical / 6 warning / 8 info — no PITFALLS violations. Carry-forward: 9 UI-behavioral UAT items (02-HUMAN-UAT.md) pending live-browser verification.
-
-**Phase 3: Streak Loop — Complete (2026-04-21).** The core motivator is live. `streak.svc.ts` issues one `Promise.all` over 4 Dexie range queries (Anti-Pattern 3 cleared); `monthMath.ts` builds 42-cell grids via `dayKey` utilities (Pitfall #3 clean); `hooks.ts` houses canonical `useLiveQuery` wrappers including `useDayDetail`. `DayCell.tsx` is a pure 2×2 quadrant primitive locking D-08 (NW=PT/NE=Food/SW=Steps/SE=Lift) and D-09 (count-based alpha ramp). Calendar assembly: `MonthHeader` + `WeekdayHeader` + `MonthGrid` (42 cells, single `useLiveQuery` subscription) + `StreakCount` hero + `StreakCalendar` composer; CalendarScreen replaces Phase 1 stub. Day Detail: new `/#/day/:dayKey` hash route with regex guard and silent redirect on invalid keys; reuses Phase 2 leaf components via additive optional `dayKey` and `editSession` props (Phase 2 callers compile unchanged, tsc -b 0). PT edit preserves id+dayKey+loggedAt (no duplicate-on-today). Code review: 0 critical / 3 warning / 5 info — known: WR-01/02 midnight-staleness on `useCurrentStreakCount`/StreakCount subtitle (low real-world impact, candidate for Phase 4 polish), WR-03 `deleteLift` clears note alongside flag (consider undo/confirm). 7 STREAK REQs architecturally verified (STREAK-01..07). Carry-forward: 8 UI-behavioral UAT items (03-HUMAN-UAT.md), 7 of 8 pre-approved at Wave 2 checkpoint, 1 pending formal walkthrough (Today-tab regression check).
-
-**Next:** Phase 4 — Backup & Polish (JSON export, PWA install/icon polish, data-safety UX).
+**v1.0 closed 2026-08-08** (see MILESTONES.md) — solo tracker shipped through Phase 4 wave 1. **v2.0 Duo Redesign started 2026-08-08**: defining requirements.
 
 ---
-*Last updated: 2026-04-21 after Phase 3 completion*
+*Last updated: 2026-08-08 — v2.0 Duo Redesign milestone started*
