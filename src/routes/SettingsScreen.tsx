@@ -3,7 +3,9 @@ import { Button } from '@/components/ui/button';
 import { getDeferredInstallPrompt, triggerInstallPrompt, isStandalone } from '@/lib/installMode';
 import { APP_VERSION, BUILD_HASH } from '@/lib/version';
 import { GoalsForm } from '@/features/settings/GoalsForm';
+import { ApiKeyCard } from '@/features/settings/ApiKeyCard';
 import { ExportCard } from '@/features/settings/ExportCard';
+import { ImportCard } from '@/features/settings/ImportCard';
 
 function isAndroid(): boolean {
   return /android/i.test(navigator.userAgent);
@@ -51,9 +53,13 @@ export function SettingsScreen() {
         </Card>
       )}
 
+      <ApiKeyCard />
+
       <GoalsForm />
 
       <ExportCard />
+
+      <ImportCard />
 
       <div className="flex-1" />
 

@@ -10,6 +10,9 @@
   --color-muted:   var(--muted);
   --color-text:    var(--text);
   --color-accent:  var(--accent);
+  --color-ring-food:   var(--ring-food);
+  --color-ring-lift:   var(--ring-lift);
+  --color-ring-cardio: var(--ring-cardio);
 }
 
 html {

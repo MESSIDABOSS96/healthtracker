@@ -13,8 +13,6 @@ export interface DailyTotals {
   fatG: number;
 }
 
-const THIRTY_DAYS_MS = 30 * 86_400_000;
-
 // ------- Writes -------
 
 export async function logMeal(params: {
@@ -37,6 +35,11 @@ export async function logMeal(params: {
     computedFatG: food.fatG * servings,
   };
   await db.mealEntries.put(entry);
+  // Auto-library bookkeeping: every log bumps recency + frequency.
+  await db.foods.update(food.id, {
+    usageCount: (food.usageCount ?? 0) + 1,
+    lastUsedAt: entry.loggedAt,
+  });
 }
 
 export async function updateMealEntry(
@@ -83,35 +86,31 @@ export async function getDailyTotals(dayKey: string): Promise<DailyTotals> {
   );
 }
 
-/** Most-recently-logged unique foods, newest first. */
+/** Most-recently-logged foods, newest first — served by the v2 lastUsedAt index. */
 export async function getRecentFoods(limit = 10): Promise<Food[]> {
-  const entries = await db.mealEntries.orderBy('loggedAt').reverse().toArray();
-  const seen = new Set<string>();
-  const orderedIds: string[] = [];
-  for (const e of entries) {
-    if (seen.has(e.foodId)) continue;
-    seen.add(e.foodId);
-    orderedIds.push(e.foodId);
-    if (orderedIds.length >= limit) break;
-  }
-  if (orderedIds.length === 0) return [];
-  const foods = await db.foods.bulkGet(orderedIds);
-  return foods.filter((f): f is Food => f !== undefined);
+  const foods = await db.foods.orderBy('lastUsedAt').reverse().limit(limit * 2).toArray();
+  return foods.filter(f => (f.usageCount ?? 0) > 0).slice(0, limit);
 }
 
-/** Most-frequently-logged foods in the last 30 days. */
+/** Most-frequently-logged foods (recent 30 days weighting kept simple: lifetime count). */
 export async function getFrequentFoods(limit = 8): Promise<Food[]> {
-  const since = Date.now() - THIRTY_DAYS_MS;
-  const entries = await db.mealEntries.where('loggedAt').above(since).toArray();
-  const counts = new Map<string, number>();
-  for (const e of entries) counts.set(e.foodId, (counts.get(e.foodId) ?? 0) + 1);
-  const orderedIds = [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
-    .map(([id]) => id);
-  if (orderedIds.length === 0) return [];
-  const foods = await db.foods.bulkGet(orderedIds);
-  return foods.filter((f): f is Food => f !== undefined);
+  const foods = await db.foods.orderBy('usageCount').reverse().limit(limit * 2).toArray();
+  return foods.filter(f => (f.usageCount ?? 0) > 1).slice(0, limit);
+}
+
+/** Calories summed per dayKey over an inclusive range (Dashboard eating trend). */
+export async function getCaloriesByDay(
+  startKey: string,
+  endKey: string,
+): Promise<Map<string, number>> {
+  const entries = await db.mealEntries
+    .where('dayKey').between(startKey, endKey, true, true)
+    .toArray();
+  const byDay = new Map<string, number>();
+  for (const e of entries) {
+    byDay.set(e.dayKey, (byDay.get(e.dayKey) ?? 0) + e.computedCalories);
+  }
+  return byDay;
 }
 
 export async function getLastServingsForFood(foodId: string): Promise<number | undefined> {

@@ -7,3 +7,6 @@ export const LAST_OPENED_KEY = 'healthtracker:lastOpenedAt';
 export const PREV_OPENED_KEY = 'healthtracker:prevOpenedAt';
 export const INSTALL_DISMISSED_KEY = 'healthtracker:installDismissedAt';
 export const LAST_EXPORTED_KEY = 'healthtracker:lastExportedAt';
+// Anthropic API key lives in localStorage DELIBERATELY — export.svc only reads
+// Dexie tables, so the key can never leak into a backup JSON.
+export const API_KEY_KEY = 'healthtracker:anthropicApiKey';

@@ -1,12 +1,6 @@
 // src/features/food/hooks.ts
-// Plan 02-03 (food slice) — useLiveQuery wrappers around meals.svc / food.svc.
-// Each hook re-fires when its backing store mutates (any put/delete in mealEntries
-// or foods), driving FOOD-07 live-totals reactivity and the picker / chip rows.
-//
-// Note: useAllFoods is the ONE place in the feature layer that touches `db` directly
-// (for orderBy queries the meals service doesn't expose). Acceptable here because
-// hooks.ts is already a reactive-read layer, not a UI component. Other features
-// should stick to service functions only.
+// useLiveQuery wrappers around meals.svc / food library. Parameterized by
+// dayKey so DailyScreen (today) and DayDetail (past days) share components.
 
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
@@ -17,14 +11,13 @@ import {
   getLastServingsForFood,
 } from '@/services/meals.svc';
 import { db } from '@/db/db';
-import { todayKey } from '@/lib/dayKey';
 
-export function useTodayEntries() {
-  return useLiveQuery(() => getTodayEntries(todayKey()), []);
+export function useEntriesForDay(dayKey: string) {
+  return useLiveQuery(() => getTodayEntries(dayKey), [dayKey]);
 }
 
-export function useDailyTotals() {
-  return useLiveQuery(() => getDailyTotals(todayKey()), []);
+export function useDailyTotals(dayKey: string) {
+  return useLiveQuery(() => getDailyTotals(dayKey), [dayKey]);
 }
 
 export function useRecentFoods() {

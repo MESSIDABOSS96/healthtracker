@@ -1,14 +1,14 @@
 import { NavLink } from 'react-router-dom';
-import { Home, CalendarDays, Settings } from 'lucide-react';
+import { CircleDot, ChartLine, Settings } from 'lucide-react';
 
 /**
- * Bottom tab bar (D-01, D-02, D-04). 3 equal-width tabs.
- * Active tab uses --accent (D-16); inactive uses --muted.
+ * Bottom tab bar. 3 equal-width tabs.
+ * Active tab uses --accent; inactive uses --muted.
  */
 const tabs = [
-  { to: '/today',    label: 'Today',    Icon: Home },
-  { to: '/calendar', label: 'Calendar', Icon: CalendarDays },
-  { to: '/settings', label: 'Settings', Icon: Settings },
+  { to: '/daily',     label: 'Daily',     Icon: CircleDot },
+  { to: '/dashboard', label: 'Dashboard', Icon: ChartLine },
+  { to: '/settings',  label: 'Settings',  Icon: Settings },
 ];
 
 export function TabBar() {

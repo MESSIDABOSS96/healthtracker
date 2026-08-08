@@ -1,46 +1,92 @@
 // src/services/food.svc.ts
-// Food library CRUD with OPFS photo orchestration.
+// v2 auto-library. There is no manual "create food" flow anymore — items enter
+// the library exclusively by confirming a parse (AI or local), deduped by
+// normalizedName (exact match only — fuzzy merging is a deliberate anti-feature).
 //
-// CRITICAL Pitfall #1 discipline: the OPFS photo pipeline runs BEFORE db.foods.put.
-// OPFS calls are NOT IDB, so they must never live inside a Dexie multi-store txn — a
-// non-IDB await inside one causes IDB to auto-commit and drop subsequent writes.
-// Dexie single-statement puts auto-transaction, so no explicit wrapper is needed here.
+// Pitfall #1 discipline: any OPFS photo work must happen BEFORE Dexie writes;
+// parse fetches must complete before Dexie writes (see parse.svc.ts).
 
 import { db } from '@/db/db';
-import type { Food } from '@/db/schema';
-import { resizePhoto, savePhoto, deletePhoto } from '@/lib/photoStore';
+import type { Food, MealBucket } from '@/db/schema';
+import { normalizeFoodName } from '@/lib/normalizeFoodName';
+import { deletePhoto } from '@/lib/photoStore';
+import type { ParsedFood } from './parse.svc';
+import { logMeal } from './meals.svc';
 
-export async function createFood(params: {
-  name: string;
-  calories: number;
-  proteinG: number;
-  carbsG: number;
-  fatG: number;
+/**
+ * Convert a confirmed parse into per-serving food data + a servings count.
+ * Weight/volume units store a per-100 serving (so re-logs scale naturally);
+ * discrete items store a per-1 serving.
+ */
+export function toServingBasis(parsed: ParsedFood): {
+  perServing: { calories: number; proteinG: number; carbsG: number; fatG: number };
   servingLabel: string;
-  photoFile?: File | null;
-}): Promise<Food> {
-  const { photoFile, ...rest } = params;
-
-  // Step 1 — photo pipeline BEFORE any Dexie write (Pitfall #1, CLAUDE.md rule #1).
-  let photoKey: string | undefined;
-  if (photoFile) {
-    try {
-      const resized = await resizePhoto(photoFile); // 800×800 WebP@80% (photoStore.ts)
-      photoKey = await savePhoto(resized); // OPFS write
-    } catch (err) {
-      console.error('[food.svc] photo save failed', err);
-      photoKey = undefined; // silent fallback per UI-SPEC
-    }
-  }
-
-  // Step 2 — Dexie write (single-statement auto-txn; no explicit tx needed).
-  const food: Food = {
-    id: crypto.randomUUID(),
-    ...rest,
-    photoKey,
-    createdAt: Date.now(),
+  servingQty: number;
+  servingUnit: string;
+  servings: number;
+} {
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+  const isMeasure = parsed.unit === 'g' || parsed.unit === 'ml';
+  const servings = isMeasure ? parsed.quantity / 100 : parsed.quantity;
+  const safeServings = servings > 0 ? servings : 1;
+  return {
+    perServing: {
+      calories: round1(parsed.calories / safeServings),
+      proteinG: round1(parsed.proteinG / safeServings),
+      carbsG: round1(parsed.carbsG / safeServings),
+      fatG: round1(parsed.fatG / safeServings),
+    },
+    servingLabel: isMeasure ? `100 ${parsed.unit}` : '1 item',
+    servingQty: isMeasure ? 100 : 1,
+    servingUnit: isMeasure ? parsed.unit : 'count',
+    servings: safeServings,
   };
+}
+
+/**
+ * Upsert a confirmed parse into the library (dedupe on normalizedName) and
+ * log it as a meal entry for the given day. Returns the library food used.
+ */
+export async function logParsedFood(params: {
+  parsed: ParsedFood;
+  bucket: MealBucket;
+  dayKey: string;
+}): Promise<Food> {
+  const { parsed, bucket, dayKey } = params;
+  const basis = toServingBasis(parsed);
+  const normalizedName = normalizeFoodName(parsed.name);
+
+  const existing = await db.foods.where('normalizedName').equals(normalizedName).first();
+  let food: Food;
+  if (existing) {
+    // Same item re-parsed — refresh its per-serving facts with the latest
+    // confirmed values (the user just verified them in the confirm form).
+    food = {
+      ...existing,
+      name: parsed.name,
+      ...basis.perServing,
+      servingLabel: basis.servingLabel,
+      servingQty: basis.servingQty,
+      servingUnit: basis.servingUnit,
+      parseSource: parsed.source,
+    };
+  } else {
+    food = {
+      id: crypto.randomUUID(),
+      name: parsed.name,
+      normalizedName,
+      ...basis.perServing,
+      servingLabel: basis.servingLabel,
+      servingQty: basis.servingQty,
+      servingUnit: basis.servingUnit,
+      parseSource: parsed.source,
+      usageCount: 0,
+      lastUsedAt: Date.now(),
+      createdAt: Date.now(),
+    };
+  }
   await db.foods.put(food);
+  await logMeal({ food, servings: basis.servings, bucket, dayKey });
   return food;
 }
 
@@ -57,7 +103,7 @@ export async function deleteFood(id: string): Promise<void> {
   await db.foods.delete(id);
 }
 
-/** Substring search in local case-insensitive; orders by name (CONTEXT.md D-05). */
+/** Substring search, case-insensitive, ordered by name. */
 export function searchFoods(query: string): Promise<Food[]> {
   const q = query.toLowerCase();
   return db.foods

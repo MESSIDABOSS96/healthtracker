@@ -53,11 +53,7 @@ const goalsSchema = z.object({
     .int({ message: 'Whole number only' })
     .min(0, 'Must be 0 or higher')
     .max(1_000_000, 'Too large'),
-  steps: z
-    .number({ message: 'Required' })
-    .int({ message: 'Whole number only' })
-    .min(0, 'Must be 0 or higher')
-    .max(1_000_000, 'Too large'),
+  weightUnit: z.enum(['lb', 'kg']),
 });
 type GoalsInput = z.infer<typeof goalsSchema>;
 
@@ -67,6 +63,8 @@ export function GoalsForm() {
   const {
     register,
     handleSubmit,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<GoalsInput>({
     resolver: zodResolver(goalsSchema),
@@ -77,10 +75,11 @@ export function GoalsForm() {
           proteinG: current.proteinG,
           carbsG: current.carbsG,
           fatG: current.fatG,
-          steps: current.steps,
+          weightUnit: current.weightUnit ?? 'lb',
         }
       : undefined,
   });
+  const weightUnit = watch('weightUnit') ?? 'lb';
 
   const onSubmit = handleSubmit(async (data) => {
     await saveGoals(data);
@@ -164,21 +163,26 @@ export function GoalsForm() {
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="goals-steps" className="block text-xs text-muted">Steps</label>
-          <input
-            id="goals-steps"
-            type="number"
-            inputMode="numeric"
-            aria-invalid={!!errors.steps}
-            aria-describedby={errors.steps ? 'goals-steps-error' : undefined}
-            className="h-11 w-full px-3 rounded-md bg-bg border border-border text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-            {...register('steps', { valueAsNumber: true })}
-          />
-          {errors.steps && (
-            <p id="goals-steps-error" className="text-xs" style={{ color: '#ef4444' }}>
-              {errors.steps.message}
-            </p>
-          )}
+          <p className="block text-xs text-muted">Weight unit</p>
+          <div role="radiogroup" aria-label="Weight unit" className="flex gap-2">
+            {(['lb', 'kg'] as const).map(u => (
+              <button
+                key={u}
+                type="button"
+                role="radio"
+                aria-checked={weightUnit === u}
+                onClick={() => setValue('weightUnit', u, { shouldDirty: true })}
+                className={
+                  'h-11 flex-1 rounded-md border text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg ' +
+                  (weightUnit === u
+                    ? 'bg-bg border-accent text-accent'
+                    : 'bg-bg border-border text-text hover:bg-border/40')
+                }
+              >
+                {u}
+              </button>
+            ))}
+          </div>
         </div>
 
         <Button type="submit" variant="default" className="w-full">Save goals</Button>

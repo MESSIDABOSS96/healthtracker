@@ -7,7 +7,7 @@ import type { Goals } from '@/db/schema';
 
 export const SINGLETON_ID = 'singleton';
 
-const DEFAULTS = { calories: 2000, proteinG: 180, carbsG: 180, fatG: 65, steps: 8000 };
+const DEFAULTS = { calories: 2000, proteinG: 180, carbsG: 180, fatG: 65, weightUnit: 'lb' as const };
 
 export async function seedGoalsIfAbsent(): Promise<void> {
   const existing = await db.goals.get(SINGLETON_ID);

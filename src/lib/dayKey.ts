@@ -26,6 +26,13 @@ export function keyToDate(key: string): Date {
   return new Date(y, m - 1, d);
 }
 
+/** Step a dayKey by whole days (negative = backward), staying in local time. */
+export function addDays(key: string, days: number): string {
+  const date = keyToDate(key);
+  date.setDate(date.getDate() + days);
+  return dateToKey(date);
+}
+
 /**
  * Infer meal bucket from local time per CONTEXT.md D-08.
  * breakfast < 11:00, lunch < 15:00, dinner < 21:00, snack otherwise.

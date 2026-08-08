@@ -77,13 +77,12 @@ export function ExportCard() {
   // negligible (per RESEARCH Open Q #4). Sum of counts — any nonzero means
   // "user has data worth backing up".
   const rowCount = useLiveQuery(async () => {
-    const [a, b, c, d] = await Promise.all([
-      db.ptSessions.count(),
+    const [a, b, c] = await Promise.all([
       db.mealEntries.count(),
-      db.stepEntries.count(),
-      db.liftCheckins.count(),
+      db.dailyCheckins.count(),
+      db.weightEntries.count(),
     ]);
-    return a + b + c + d;
+    return a + b + c;
   }, []);
 
   // Re-sync lastExportedAt from localStorage after every successful export

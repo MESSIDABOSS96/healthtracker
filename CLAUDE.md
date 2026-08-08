@@ -1,67 +1,48 @@
 # HealthTracker
 
-A fully-local, offline-first PWA for unified daily tracking of PT rehab, food/macros, steps, and a lift check-in — with a 4-segment calendar streak loop as the core motivator. Solo user, single device, no backend, no auth.
+A fully-local, offline-first PWA used independently by two friends (each installs it on their own phone — no backend, no auth, no shared data). v2 covers: calorie/macro tracking with AI-parsed freeform entry and a self-building food library, one-tap lift/cardio check-offs, body-weight tracking with trends, and an Apple-Fitness-style daily closure ring plus a long-term Dashboard.
 
-## Where to Look First
+**Workflow note:** Build directly with normal tools. Do NOT use the GSD workflow/skills — the user explicitly does not want it. `.planning/` holds historical planning docs and research notes (useful reference, not process to follow).
 
-| File | Purpose |
-|------|---------|
-| `.planning/PROJECT.md` | Core value, requirements, constraints, key decisions. Always current. |
-| `.planning/REQUIREMENTS.md` | v1 / v2 / out-of-scope with REQ-IDs. Traceability table maps REQ-IDs to phases. |
-| `.planning/ROADMAP.md` | Phase structure with goals and success criteria. |
-| `.planning/STATE.md` | Current project memory — what's in progress, decisions to resolve. |
-| `.planning/research/SUMMARY.md` | Stack + build-order recommendations (read first). |
-| `.planning/research/STACK.md` | Full technology choices with versions and rationale. |
-| `.planning/research/ARCHITECTURE.md` | Object store schema, day-key rules, OPFS photo pattern, SW strategy. |
-| `.planning/research/FEATURES.md` | Table-stakes / differentiators / anti-features. |
-| `.planning/research/PITFALLS.md` | Project-breaking pitfalls to prevent from Phase 1. |
-| `.planning/config.json` | Workflow preferences (mode, granularity, parallelism, agents). |
+## Core Value
 
-## Core Value (Non-Negotiable)
+**Consistency through satisfying daily closure and visible long-term progress.** Every UX tradeoff biases toward low-friction entry (type it and done; one-tap re-logs and check-offs) and clean, sleek visual feedback.
 
-Visual consistency feedback that makes logging feel like a win. If the streak loop reliably motivates daily logging and everything else is imperfect, the product is succeeding. Every UX tradeoff biases toward **low-friction entry** and **satisfying visual feedback**.
+## Stack
 
-## Stack (Locked by Research)
+React 19 + Vite 7 + TypeScript + Dexie 4 (+ `useLiveQuery`) + Tailwind CSS 4 + `motion` (animations) + Recharts (Dashboard, lazy-loaded) + React Hook Form + Zod.
 
-React 19 + Vite 7 + TypeScript + Dexie 4 (+ `useLiveQuery`) + Tailwind CSS 4 + shadcn/ui + `react-activity-calendar` + Recharts + React Hook Form + Zod + Zustand (ephemeral UI only).
+**Pin Vite to 7.x** (vite-plugin-pwa peer-dep policy).
 
-**Pin Vite to 7.x** until `vite-plugin-pwa` 1.3 resolves Vite 8 peer-dep warnings.
+## Architecture Map
 
-## Project-Breaking Rules (From PITFALLS.md)
+| Area | Where |
+|------|-------|
+| Dexie schema + migrations | `src/db/db.ts` (v1 + v2 blocks), types in `src/db/schema.ts` |
+| Day identity | `src/lib/dayKey.ts` only (+ `useDayKey` for midnight rollover) |
+| AI + local food parsing | `src/services/parse.svc.ts` (Claude Haiku browser-direct; deterministic offline grammar) |
+| Auto-library | `src/services/food.svc.ts` (`logParsedFood`, dedupe on `normalizedName`), `normalizeFoodName.ts` |
+| Closure model | `src/services/closure.svc.ts` — day closes when food logged + lift + cardio checked (any-log semantics) |
+| Check-offs / weight | `checkins.svc.ts` (row existence = checked, `source` field for future Hevy sync), `weight.svc.ts` (EMA trend) |
+| API key | `src/lib/apiKey.ts` — localStorage ONLY, never Dexie (keeps it out of exports) |
+| Screens | `/daily` (ring + logging), `/dashboard` (trends, lazy), `/day/:dayKey`, `/settings` |
+| Backup | `export.svc.ts` / `import.svc.ts` — v2 envelope, current schemaVersion only on import |
 
-1. **Never `await` a non-IDB promise inside a Dexie transaction** — it silently auto-commits and drops writes.
-2. **Never edit a past `db.version(N).stores({...})` declaration** — schema migrations are append-only. Add a new version block.
-3. **Never use `toISOString().split('T')[0]`** to derive a day key — it returns UTC date and shifts days for western timezones. Use `lib/dayKey.ts` only.
-4. **Call `navigator.storage.persist()` on startup** — without it, iOS Safari wipes IndexedDB after 7 days of inactivity.
-5. **Resize photos to ≤800×800 @ 80% WebP before OPFS write** — raw iPhone photos fill quota and crash the tab.
-6. **Photos live in OPFS, not as Dexie blobs** — `foods.photoKey` stores only a filename reference.
+## Project-Breaking Rules
 
-## GSD Workflow (Active)
+1. **Never `await` a non-IDB promise inside a Dexie transaction** — it silently auto-commits and drops writes. The Anthropic parse fetch must ALWAYS complete before any Dexie write begins.
+2. **Never edit a past `db.version(N).stores({...})` declaration** — migrations are append-only. Add a new version block. The orphaned v1 stores (ptTemplates, ptSessions, stepEntries, liftCheckins) stay declared forever.
+3. **Never use `toISOString().split('T')[0]`** for day keys — UTC drift shifts days in western timezones. Use `lib/dayKey.ts` only.
+4. **Call `navigator.storage.persist()` on startup** (done in `main.tsx`) — iOS Safari wipes IndexedDB after 7 days of inactivity otherwise.
+5. **Photos: ≤800×800 WebP@80% in OPFS**, `foods.photoKey` stores only a filename — never Blobs in Dexie.
+6. **The Anthropic API key lives in localStorage, never in Dexie** — export reads Dexie tables only, so the key can structurally never leak into a backup.
+7. **Parsed food never auto-saves** — every parse (AI or local) goes through the editable confirm form; keep the 4/4/9 macro sanity check wired.
+8. **One `useLiveQuery` per consumer, never per day/cell** — dashboard and grids use single range queries.
 
-This project is managed with the GSD workflow (`.claude/skills/gsd-*`). Active config:
+## Design
 
-- **Mode:** YOLO (auto-approve gates, execute fast)
-- **Granularity:** Coarse (4 phases, 1–3 plans each)
-- **Parallelism:** On (independent plans run concurrently)
-- **Research / Plan Check / Verifier:** All enabled
-- **Model profile:** Balanced (Sonnet across agents)
-
-**Next step after initialization:** `/gsd-discuss-phase 1` to gather phase context, then `/gsd-plan-phase 1`.
-
-## Phase Summary
-
-| # | Phase | Requirements | Core Deliverable |
-|---|-------|--------------|------------------|
-| 1 | Foundation | SETUP + DATA (10) | Scaffold, Dexie schema, dayKey, OPFS, PWA shell, dark theme |
-| 2 | Tracking Slices | PT + FOOD + STEPS + LIFT + SET (22) | All four logging areas + goals settings |
-| 3 | Streak Loop | STREAK (7) | 4-segment calendar, day detail, streak count |
-| 4 | Backup & Polish | BACK (2) | JSON export, PWA install polish |
-
-## Open Decisions (Pre-Phase-3)
-
-1. **Segment completion definition** — STREAK-02 currently says "any log fills quadrant"; research suggested "hit target" for food specifically. Lock before Phase 3 planning.
-2. **DayCell SVG geometry / color palette** — design decision for the 4-segment indicator across 0/1/2/3/4 states. Lock during Phase 3 UI work.
+Dark-only, zinc base + green accent (`src/styles/tokens.css`). Ring segment colors: `--ring-food/lift/cardio`; chart colors `--chart-*` are dark-surface-validated — don't swap them casually. Design skills live in `.agents/skills/` (apple-design, pick-ui-library, improve-animations) — consult for UI/motion work. Respect `prefers-reduced-motion` in every animation.
 
 ## Explicitly Out of Scope
 
-Full lift tracking, auth, cloud sync, Apple Health / Google Fit, barcode, nutrition APIs, social, notifications, streak freeze / gamification, hydration/sleep/mood, bodyweight. See REQUIREMENTS.md "Out of Scope" table for full reasoning.
+Shared data between the two users, backend/auth/sync, Hevy auto-sync (deferred — needs Hevy Pro; `source: 'hevy'` field reserved), nutrition DBs/barcode scanning, photo food recognition, fuzzy library merging, full lift tracking (lives in Hevy), notifications, social features. PT rehab and steps tracking are retired v1 features — do not resurrect.

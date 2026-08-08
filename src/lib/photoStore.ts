@@ -28,6 +28,15 @@ export async function savePhoto(blob: Blob): Promise<string> {
   return key;
 }
 
+/** Restore a photo under an existing key (JSON import path only). */
+export async function savePhotoAs(key: string, blob: Blob): Promise<void> {
+  const dir = await getDir();
+  const fh = await dir.getFileHandle(key, { create: true });
+  const writable = await fh.createWritable();
+  await writable.write(blob);
+  await writable.close();
+}
+
 /** Read a photo back as a Blob. Caller is responsible for object-URL lifecycle. */
 export async function loadPhoto(filename: string): Promise<Blob> {
   const dir = await getDir();

@@ -7,8 +7,11 @@ import type {
   MealEntry,
   StepEntry,
   LiftCheckin,
+  DailyCheckin,
+  WeightEntry,
   Goals,
 } from './schema';
+import { normalizeFoodName } from '@/lib/normalizeFoodName';
 
 /* =========================================================================
  * SCHEMA VERSION HISTORY — APPEND-ONLY. NEVER EDIT A SHIPPED VERSION BLOCK.
@@ -22,33 +25,42 @@ import type {
  *     liftCheckins (dayKey PK — natural key, one record per day)
  *     goals        (id PK — singleton: id === 'singleton')
  *
+ *   v2 (2026-08): Duo redesign.
+ *     + weightEntries (dayKey PK — one weigh-in per day)
+ *     + dailyCheckins ([dayKey+kind] compound PK, dayKey idx) — lift/cardio,
+ *       row existence = checked; carries source ('manual' | 'hevy') for future sync
+ *     ~ foods gains normalizedName / lastUsedAt / usageCount indexes (auto-library)
+ *     upgrade(): liftCheckins rows with lifted=true copied into dailyCheckins;
+ *       foods backfilled with normalizedName + usage stats from mealEntries.
+ *     ptTemplates / ptSessions / stepEntries / liftCheckins remain DECLARED but
+ *     ORPHANED — no v2 code path reads or writes them. Deliberately not dropped:
+ *     combining store deletion with other structural changes in one version block
+ *     has known Dexie edge cases, and leaving them costs nothing.
+ *
  * Future migrations MUST add this.version(N+1).stores({...}).upgrade(tx => {...})
- * — never mutate an earlier version block. See .planning/research/PITFALLS.md
- * §Pitfall 2 for the rationale and failure mode.
+ * — never mutate an earlier version block. See .planning/research/PITFALLS.md.
  * =========================================================================
  *
  * TRANSACTION RULE (Pitfall #1): Inside db.transaction('rw', tables, async () => {...})
- * every `await` must be a Dexie call. A non-IDB await (fetch, setTimeout, IndexedDB
- * OPFS call, etc.) causes IDB to auto-commit and drop subsequent writes silently.
- * CORRECT:
- *   await db.transaction('rw', db.foods, async () => {
- *     const f = await db.foods.get(id);           // Dexie — OK
- *     await db.foods.put({ ...f, name: 'new' });  // Dexie — OK
- *   });
- * FORBIDDEN (silent data loss):
- *   await db.transaction('rw', db.foods, async () => {
- *     const resp = await fetch('/x');             // ← non-IDB — txn auto-commits here
- *     await db.foods.put(...);                    // ← throws or no-ops
- *   });
+ * every `await` must be a Dexie call. A non-IDB await (fetch, setTimeout, OPFS call,
+ * etc.) causes IDB to auto-commit and drop subsequent writes silently. The Anthropic
+ * parse call in parse.svc.ts must ALWAYS complete before any Dexie transaction begins.
  * ========================================================================= */
 
 export class HealthTrackerDB extends Dexie {
+  /** @deprecated v1 orphaned store — do not use. */
   ptTemplates!: Table<PTTemplate, string>;
+  /** @deprecated v1 orphaned store — do not use. */
   ptSessions!: Table<PTSession, string>;
+  /** @deprecated v1 orphaned store — do not use. */
+  stepEntries!: Table<StepEntry, string>;
+  /** @deprecated v1 store — migrated into dailyCheckins; do not use. */
+  liftCheckins!: Table<LiftCheckin, string>;
+
   foods!: Table<Food, string>;
   mealEntries!: Table<MealEntry, string>;
-  stepEntries!: Table<StepEntry, string>;
-  liftCheckins!: Table<LiftCheckin, string>;
+  dailyCheckins!: Table<DailyCheckin, [string, string]>;
+  weightEntries!: Table<WeightEntry, string>;
   goals!: Table<Goals, string>;
 
   constructor() {
@@ -62,6 +74,48 @@ export class HealthTrackerDB extends Dexie {
       'liftCheckins': 'dayKey',
       'goals':        'id',
     });
+
+    this.version(2)
+      .stores({
+        'foods':         'id, name, createdAt, normalizedName, lastUsedAt, usageCount',
+        'dailyCheckins': '[dayKey+kind], dayKey',
+        'weightEntries': 'dayKey',
+      })
+      .upgrade(async tx => {
+        // All awaits below are Dexie calls on tx tables — safe inside the upgrade txn.
+
+        // 1) Migrate v1 lift check-ins → generalized dailyCheckins.
+        const lifts = (await tx.table('liftCheckins').toArray()) as LiftCheckin[];
+        const migrated: DailyCheckin[] = lifts
+          .filter(l => l.lifted)
+          .map(l => ({
+            dayKey: l.dayKey,
+            kind: 'lift',
+            source: 'manual',
+            loggedAt: l.loggedAt,
+          }));
+        if (migrated.length > 0) {
+          await tx.table('dailyCheckins').bulkPut(migrated);
+        }
+
+        // 2) Backfill auto-library fields on foods from meal history so the
+        //    library is warm on day one (usage counts + recency).
+        const entries = (await tx.table('mealEntries').toArray()) as MealEntry[];
+        const usage = new Map<string, { count: number; last: number }>();
+        for (const e of entries) {
+          const u = usage.get(e.foodId) ?? { count: 0, last: 0 };
+          u.count += 1;
+          u.last = Math.max(u.last, e.loggedAt);
+          usage.set(e.foodId, u);
+        }
+        await tx.table('foods').toCollection().modify(f => {
+          const u = usage.get(f.id);
+          f.normalizedName = normalizeFoodName(f.name);
+          f.usageCount = u?.count ?? 0;
+          f.lastUsedAt = u?.last ?? f.createdAt;
+          f.parseSource = 'legacy';
+        });
+      });
   }
 }
 

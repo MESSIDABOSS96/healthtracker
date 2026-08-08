@@ -17,11 +17,13 @@
     "dexie": "^4.0.11",
     "dexie-react-hooks": "^1.1.7",
     "lucide-react": "^0.468.0",
+    "motion": "^13.0.0",
     "radix-ui": "^1.4.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.73.1",
     "react-router-dom": "^7.0.0",
+    "recharts": "^3.10.1",
     "tailwind-merge": "^2.5.0",
     "zod": "^4.3.6"
   },
