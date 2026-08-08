@@ -1,353 +1,226 @@
 # Feature Research
 
-**Domain:** Personal PWA health/fitness tracker (4-domain daily consistency tool)
-**Researched:** 2026-04-19
-**Confidence:** HIGH (core patterns), MEDIUM (PT-specific), HIGH (anti-patterns)
+**Domain:** Personal health/fitness tracking PWA — AI-assisted food logging, ring-style daily closure, weight trend tracking, consistency dashboard (two independent local users)
+**Researched:** 2026-08-08 (v2.0 Duo Redesign milestone — supersedes v1 FEATURES.md research from 2026-04-19)
+**Confidence:** MEDIUM (HIGH on Apple ring semantics and weight-smoothing math; MEDIUM on AI-parse UX patterns from MacroFactor's public beta docs; LOW on food-library dedupe UX — no mainstream app publishes this pattern explicitly, recommendation is synthesized from general fuzzy-matching practice)
 
----
-
-## Scope Boundary Reminder
-
-The following are **explicitly out of scope** per PROJECT.md and are not re-proposed anywhere in this document:
-- Full lift tracking (sets/reps/weight)
-- User auth / cloud sync / backend
-- Apple Health / Google Fit integration
-- Barcode scanning / third-party nutrition APIs
-- Social features, leaderboards
-- Bodyweight, hydration, sleep, mood tracking
-
----
+This file covers only the **new v2 surface area**: AI freeform food parsing + auto-library, ring-style daily closure (food + lift + cardio), weight tracking + trend, and the Dashboard. v1 macro-entry-with-progress-bars, food CRUD, and calendar streak view are being replaced, not extended — so "table stakes" below are stated against the *new* mental model (rings/closure), not the old one (quadrant calendar). PT rehab and steps tracking are dropped entirely in v2 and are not covered here (see PROJECT.md Out of Scope).
 
 ## Feature Landscape
 
 ### Table Stakes (Users Expect These)
 
-Features users assume any tracker has. Missing these = product feels broken or half-finished.
-
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Daily macro progress bars (cals + P/C/F) | Every macro tracker shows remaining-vs-goal at a glance. Users can't make food decisions without it. | LOW | "Remaining" counter above the log is the dominant pattern (MacroFactor, Cronometer, MFP all do this). Show consumed + remaining simultaneously. |
-| Per-food entry: name + calories + P/C/F | Baseline unit of food tracking. Without custom fields, the library is useless. | LOW | Already in scope. Five fields max. |
-| Configurable daily targets (cals, P, C, F, steps) | Users start with targets from their coach/app; need to enter their own. Without this, the tracker can't tell them how they're doing. | LOW | Already in scope. Simple settings form. |
-| Meal groupings (Breakfast / Lunch / Dinner / Snacks) | Users mentally categorize eating by meal. Flat time-based logs (MacroFactor's timeline) are elegant but require adaptation. For a personal tool eating known repeated meals, named buckets match the mental model. | LOW | Flat "add food" with optional meal label is sufficient. Don't force rigid buckets — allow anything under any label. |
-| Food search / recall within personal library | Without fast recall, users re-enter the same food daily and quit. Recall of recent/frequent foods is the single biggest friction reducer. | LOW-MEDIUM | Prioritize: (1) recents list, (2) search by name. Already in scope as "recall for repeat meals." |
-| Day-level log view (what I ate today, what PT I did) | Users need to review today's data before logging more and to verify they've completed everything. | LOW | Already implied by scope. One screen per day, 4 sections. |
-| Offline-first operation | Users log in gyms, kitchens, and PT clinics — connectivity is unreliable. App must work fully offline. | MEDIUM | PWA + IndexedDB + Service Worker. Already in scope. |
-| Home-screen installability (PWA) | Users expect phone-app behavior. Without "Add to Home Screen," the product feels like a website, not a tool. | LOW | Web App Manifest + beforeinstallprompt. Already in scope. |
-| Edit / delete past entries | Users make mistakes. An immutable log is unusable. | LOW | Applies to food entries, PT sessions, step counts, lift check-ins. |
-| Visual daily completion state | The core motivator. Without this, there's no reason to log. Each day must communicate "done" or "incomplete" instantly. | MEDIUM | Already the core feature. 4-segment indicator. |
-| Calendar / month history view | Users check streaks retroactively and feel progress or regret. Without a multi-week view, the motivational loop is broken. | MEDIUM | Already in scope. Critical MVP feature. |
+| Freeform text entry for food ("200g chicken, 31g protein/100g") | This is the entire pitch of v2 — MacroFactor and Cronometer both shipped AI/NL entry in 2024-2025 as the new baseline for "fast" logging | MEDIUM | Needs a real parser (Claude Haiku) + a non-AI fallback for offline; see PITFALLS.md for parser reliability risk |
+| Editable confirm-before-log screen | MacroFactor: "you can still review, adjust, and confirm every entry before logging" — no mainstream app auto-commits an AI guess without a review step | LOW-MEDIUM | Structured editable fields (name, qty, kcal, P/C/F), not just raw text re-edit |
+| One-tap re-log of previously-logged items | MyFitnessPal's swipe-to-repeat-yesterday and "Quick Add" from recents are core retention features; users eat the same 10-20 things on repeat | LOW | This *is* the "smart auto-library" — recent/frequent list surfaced above search |
+| Binary one-tap check-off for lift/cardio | Apple's Stand ring and most habit trackers (Streaks app) use a single tap = done model; any friction beyond one tap kills daily compliance for a "did I train" question | LOW | No sets/reps/duration needed — v1 already validated this pattern for lift |
+| Daily weight entry, single number, single tap-to-save | Every scale-linked app (Withings, Renpho, Happy Scale) treats raw weight entry as trivial — one field, saved instantly, no required time-of-day discipline enforced by UI | LOW | Don't gate on "did you weigh at the same time" — accept the number, let smoothing handle noise |
+| A visible daily completion state (rings/segments) that updates live as sub-goals are met | This is literally why users open Apple Fitness / any streak app — immediate visual reward on each action, not just at midnight | MEDIUM | Ring or ring-like widget must re-render optimistically the instant an entry is saved (Dexie `useLiveQuery` makes this cheap) |
+| Long-term weight trend chart (not just raw scatter of daily weigh-ins) | Raw daily weight is dominated by water/sodium/GI-content noise (typically ±0.5-1kg day to day); every serious weight app (Happy Scale, Libra, Trendweight) shows a smoothed trend line, not raw dots alone | MEDIUM | See "Weight Trend Smoothing" pattern below — raw-dots-only is a known complaint pattern in app store reviews of naive weight trackers |
+| A consistency/adherence view over weeks-months (not just today) | Users cutting/tracking want to see "am I actually consistent," which single-day UI can't answer; industry pattern is % days logged / adherence score per week | MEDIUM | This is the Dashboard tab's core job — see Differentiators for what makes it more than a % counter |
+| Manual on-device API key entry + clear indicator when AI parsing is degraded/unavailable | v2 depends on a client-side Anthropic API key (constraint from PROJECT.md); every app that ships a "bring your own key" AI feature must surface key status and graceful offline fallback or users silently lose the feature | LOW-MEDIUM | Not a "nice to have" — without this, a missing/invalid key looks like a silent bug |
 
----
-
-### Differentiators (Drive Retention / Competitive Advantage)
-
-Features that set this product apart. Not expected, but they create the habit loop and align with the Core Value (visual consistency feedback that makes logging feel like a win).
+### Differentiators (Competitive Advantage)
 
 | Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| 4-segment partial-fill day indicator | No mainstream app ties PT + food + steps + lifts into a single unified daily visual. This is the core motivator — each area fills its segment as logged, complete only when all four done. Direct evidence: user reports that lift-tracker calendar streaks "meaningfully drive consistency." | HIGH (design), MEDIUM (implementation) | The defining differentiator. Every UX decision should serve this. Partial fill matters: a half-logged day still shows progress and maintains momentum. |
-| Food photo attachment on library entries | Allows visual confirmation when re-logging ("is this the right ground beef?"). Reduces wrong-food errors for repeat meals. | MEDIUM | Photos stored as IndexedDB blobs. Thumbnail in search results. Not per-log-entry — per library food item. |
-| PT session vs. template diff view | Show target (template) vs. actual (logged) sets/reps side-by-side. Rehab requires tracking whether you hit prescribed load. This is the #1 PT-specific feature missing from generic workout apps. | MEDIUM | On log completion screen: "Target: 3x15 / Actual: 3x12 — Notes: pain at rep 13." |
-| Per-session PT notes field | Rehab generates daily observations ("left knee felt tight," "no pain at new weight"). Nowhere in generic trackers. | LOW | Free-text, per-session. Already in scope. Critical for rehab feedback loop. |
-| Pain/difficulty rating per PT session | Used in clinical rehab tracking. Allows spotting patterns ("always 7/10 on eccentric days"). 0-5 or 0-10 scale. | LOW | Optional field on PT session log. Single number. Massive value for injury context. |
-| Configurable step goal with progress indicator | Step goal is personal (user is on a cut; NEAT matters). A progress bar toward today's step goal gives the "ring fill" feeling. | LOW | Already in scope as goal. The progress bar is the differentiator — not just displaying steps logged. |
-| Quick-log lift check-in (one-tap from calendar) | Minimum possible friction for the lift yes/no. One tap on today's calendar segment = done. | LOW-MEDIUM | Already in scope. Consider making this the fastest possible interaction — the daily calendar cell itself is tappable to toggle lift check-in. |
-| "Repeat yesterday's meals" or meal templates | Users on a cut eating the same meals repeatedly (user explicitly said "4 servings of same ground beef") need this. One-tap re-log a previous day's food or a saved meal combo. | MEDIUM | v1.x feature. Log "Ground Beef Bowl" as a combo that adds all its constituent foods. Saves minutes daily. |
-| Streak count display | Shows the raw number of consecutive complete days. Amplifies the calendar visual with a concrete number. | LOW | "You've logged all 4 areas for 14 days straight." Pairs with the calendar. |
-| Exercise progression notes on PT template | Flag which exercises to increase weight/reps when pain allows. Tracks the "when can I progress?" decision over time. | LOW | Add optional "Progression note" field on each template exercise. Not algorithmic — just a text note the user wrote when they hit the milestone. |
+|---------|--------------------|------------|-------|
+| Zero-friction speak/type-and-done AI parsing (no ingredient database search UI at all) | MacroFactor and Cronometer both still route through a food database/search as the primary path with AI as an accelerant; HealthTracker can skip the database entirely for a 2-user app — freeform parse *is* the primary (and only) entry path | MEDIUM-HIGH | Bigger differentiator than raw AI parsing is *not building a search UI at all* — simpler product surface than any competitor |
+| Auto-building personal library with zero manual "create food" step | Competitors (MFP, Cronometer, MacroFactor) still require an explicit "create custom food" flow at least once; here every parse auto-saves, so the library emerges from usage with no separate maintenance screen | MEDIUM | Real differentiator for a 2-person app — no library to seed on day one, unlike MFP's crowdsourced 14M-item DB which the user doesn't need |
+| Apple-Fitness-style ring closure applied to *food + lift + cardio* (not steps/exercise/stand) | No consumer nutrition/fitness app directly ports the 3-ring Apple model to "logged food, trained, did cardio" — this is a genuine cross-domain synthesis, not copied from an existing product | MEDIUM | The exact per-segment completion rule (any-log vs hit-target) is the single highest-leverage design decision here — see dedicated section below |
+| Dashboard combining weight trend + eating adherence + training consistency as one gamified surface | Most apps silo these (MyFitnessPal = food only, Apple Fitness = activity only, Happy Scale = weight only); combining all three in one glanceable view for a lifter cutting weight is a genuine product synthesis | MEDIUM-HIGH | Complexity is mostly UI/chart composition, not new data; all three data sources already exist from Daily tab logging |
+| Data model that anticipates Hevy auto-sync without building it | Lets lift/cardio check-offs be manually toggled today but be "set by an external source" tomorrow with no schema migration | LOW (if planned now) / HIGH (if retrofitted later) | Add a `source: 'manual' \| 'hevy-sync'` field on the check-off record now — near-zero cost today, expensive to bolt on later |
 
----
+### Anti-Features (Commonly Requested, Often Problematic)
 
-### Anti-Features (Commonly Added, Deliberately Avoided)
-
-Features that seem like good ideas but create friction, abandon triggers, or scope creep. Document these to prevent re-addition.
-
-| Feature | Why Requested | Why It Backfires | What to Do Instead |
-|---------|---------------|------------------|--------------------|
-| Push notifications / reminders | "I'll forget to log" — users want nudges. | 2025 research: excessive notifications are the #1 reason users delete fitness apps. Notification fatigue is real. For a solo personal tool you've installed on your home screen, you remember it. | None. The calendar visual is the ambient reminder — an incomplete day stares at you. |
-| Adaptive macro targets (auto-adjustment) | MacroFactor's signature feature. "App adjusts my targets based on weight trends." | Requires weight logging, weekly trend analysis, and algorithmic output — significant added scope. User explicitly excluded bodyweight tracking. Without weight data, adaptation is meaningless. | Fixed configurable targets in Settings. User manually adjusts when their coach says to. |
-| Points / badges / gamification layers | "Make logging fun." | Research (Frontiers in Psychology, 2025): badge complexity positively predicts "gamification burnout" and app abandonment. The S-curve shows engagement peaks at moderate feature richness and collapses at excessive richness. | The 4-segment indicator IS the gamification. It is exactly enough. Do not add badge overlays, XP, level-ups, or achievements on top of it. |
-| Social features / sharing | "Show friends my streaks." | Explicitly out of scope. Social comparison adds anxiety for solo-motivation tools. The user's stated motivation is personal consistency, not competition. | None. |
-| Onboarding tour / lengthy setup wizard | "Users need guidance." | Apps with forced onboarding see the highest Day-1 abandonment. Studies show reducing onboarding friction by 50% doubles retention. | Ship with sane defaults. Let the user explore. A minimal "first run" tip overlay (dismissable immediately) is the ceiling. |
-| Micronutrient tracking (vitamins, minerals, fiber, sodium) | "I want to track everything." | Cronometer tracks 84+ micronutrients. This is scope creep for a cut-focused macro tracker. Adds data entry fields, visualization complexity, and cognitive load. | Track only: calories, protein, carbs, fat. That's it. These are the levers for a cut. |
-| AI meal suggestions / "what should I eat?" | Trendy in 2025-2026 apps. | Requires a backend or local model. Completely incompatible with offline-only, no-server constraint. Adds complexity for a feature the user didn't request. | The food library recall already solves "what should I eat?" by surfacing what the user actually eats. |
-| Multi-day food copy (copy yesterday to today) | "I eat the same thing every day." | Useful but dangerous: one wrong day copies wrong data repeatedly. Silently creates inaccurate logs. | Better: meal templates (saved combos) the user explicitly re-logs. Intentional, not automatic. |
-| Barcode scanning / nutrition API lookup | Faster food entry for packaged foods. | Explicitly out of scope. User eats repeat home-cooked meals. External API = dependency + rate limits + connectivity requirement. | Custom food library already solves this for the user's specific eating patterns. |
-| Calendar edit for past days (retroactive streaks) | "I forgot to log, but I did do it." | Creates false streak data. The value of the streak is its integrity. Allowing retroactive edits defeats the motivational loop. | Allow editing today and yesterday only (yesterday for timezone-edge cases). Lock older days. Or: allow edits with a visual "retroactive log" indicator so the calendar shows it differently. |
-| Water / hydration tracking | "Complete health picture." | Explicitly out of scope. Adds a 5th segment to the 4-segment indicator, breaking the core design. | Out of scope permanently unless the 4-segment design is revisited. |
-| Dark-pattern streaks (freeze tokens, grace days) | Duolingo-style streak protection. | Creates psychological debt and anxiety. For an injury-recovery tool, missing a PT day due to pain is sometimes the right medical decision. Penalizing it with streak loss is harmful. | Show compassion: display a "missed day" as a neutral grey cell, not a red X. The streak shows the positive pattern, not the penalty. |
-
----
-
-## Streak / Consistency Visualization Patterns
-
-Research across GitHub, Apple Fitness, Strava, Duolingo, and habit-tracker apps surfaces 4 dominant patterns. Analysis of what works and why follows.
-
-### Pattern 1: GitHub Contribution Heatmap
-
-**What it is:** A year-in-view calendar grid where each cell is colored by intensity (contribution count). More activity = darker green. Empty = grey.
-
-**Engagement mechanic:** Endowed progress effect + loss aversion. Seeing months of colored cells makes you not want to break the pattern.
-
-**Strengths:** Shows long-term arc instantly. A full year at a glance.
-
-**Weaknesses:** Single-dimension — intensity only. Can't show multi-area partial completion.
-
-**Fit for this project:** The calendar month view should borrow the grid layout and the cell-per-day approach. The color fill, however, should encode 4-area completion state, not intensity. A cell that is 2/4 areas logged should look different from 4/4. This is a meaningful improvement on the GitHub pattern for this use case.
-
-**Implementation:** Libraries like `cal-heatmap` (JavaScript) and `react-calendar-heatmap` are production-ready. Shadcn Calendar Heatmap (2026) offers TypeScript + Tailwind variant-based styling.
-
----
-
-### Pattern 2: Apple Watch Activity Rings
-
-**What it is:** Three concentric rings (Move / Exercise / Stand), each a different color. Each fills clockwise from 0% to 100% as you hit your daily target for that metric. Rings "close" when you hit 100%.
-
-**Engagement mechanic:** Gestalt Closure principle — open rings create a "mental itch" that motivates action. The brain wants to see circles closed.
-
-**Strengths:** Instantly communicates multi-metric partial progress. You can see at a glance that you're 80% on Move but 0% on Stand. Ring closure is visually satisfying.
-
-**Weaknesses:** Three rings only. Requires a watch to generate data.
-
-**Fit for this project:** The 4-segment day indicator is a direct conceptual relative. Each segment = one tracking area. Partial fill within each segment (e.g., macros at 70% of target) maps naturally to the ring fill metaphor. The daily cell in the calendar view is the post-hoc record of whether rings closed that day.
-
-**Critical design note:** The ring/segment should show meaningful partial state, not binary. A day where you logged PT + food but missed steps and lifts should show as 2/4 filled — not "incomplete" in an undifferentiated way.
-
----
-
-### Pattern 3: Strava Training Calendar
-
-**What it is:** Month-view calendar where each day with an activity shows a colored activity-type icon. Days without activity are blank.
-
-**Engagement mechanic:** Density = visible progress. A month of filled cells feels like accomplishment.
-
-**Strengths:** Multitype activity awareness (runs, rides, swims). Activity-specific color coding.
-
-**Weaknesses:** Binary per activity type — either you logged or you didn't. No partial fill. No unified "did I have a complete day?" view.
-
-**Fit for this project:** Borrow the month-grid layout and the per-day visual richness. The 4-segment cell is a more informative evolution of the Strava dot — it shows composition, not just presence.
-
----
-
-### Pattern 4: Duolingo Streak Counter
-
-**What it is:** A flame icon with a consecutive-days count. Simple. Prominent on the home screen.
-
-**Engagement mechanic:** Loss aversion — breaking a streak feels like losing a possession.
-
-**Weaknesses:** Binary (streak continues or breaks). No composition. No historical view without navigating to stats. Freeze tokens introduce psychological debt.
-
-**Fit for this project:** Include a streak count display alongside the calendar, but treat it as secondary. The calendar heatmap is the primary motivator because it shows recovery, not just the current chain. A 30-day calendar with 28 complete days is more informative and more motivating than a "streak: 28" counter with no context.
-
-**Important distinction:** Do NOT implement streak freeze/grace-day mechanics. For injury recovery, a missed PT day may be medically necessary. The system should record honestly, not encourage gaming.
-
----
-
-### Recommended Visual Pattern for This Project
-
-Combine elements from Patterns 1 + 2:
-
-- **Day cell** (in month calendar): A small square with 4 quadrant segments. Each quadrant fills with color when its tracking area is logged for that day. All 4 filled = complete cell (full color, possibly a subtle glow or checkmark). 0/4 = empty grey cell. 2/4 = half-filled, showing which two areas.
-- **Today's view** (home screen): Full-size 4-segment ring or quartered circle showing today's live state. Each segment animates to fill as the user logs.
-- **Streak counter**: Simple number shown near the calendar header. "N consecutive complete days."
-- **Monthly summary**: X/30 complete days this month shown in small text below the calendar.
-
-This combination is novel, directly purposeful, and implementable without complex libraries.
-
----
-
-## PT / Rehab-Specific Features
-
-Physical therapy tracking has distinct requirements from general workout logging. Sources: clinical rehab literature, AAOS exercise programs, PT app user feedback.
-
-### What Matters for Tendonitis / Tennis Elbow Self-Management
-
-**Evidence base:** Rehab protocols for lateral epicondylitis run 6-12 weeks with gradual load progression. The patient's job is to: (1) do the prescribed exercises consistently, (2) track pain/difficulty, (3) progress weight/reps when pain allows, (4) not overdo it.
-
-| PT-Specific Feature | Why It Matters | Complexity | Priority |
-|---------------------|---------------|------------|----------|
-| Template model (prescribed exercises with target sets x reps) | PT prescribes a program. User needs to reproduce it exactly each session without re-entering it. | MEDIUM | P1 — already in scope |
-| Per-session actual sets x reps (vs. target) | Did you hit the prescription? Missing reps is clinically meaningful for tendon load management. | LOW | P1 — already in scope |
-| Per-session notes (free text) | "Pain spiked at eccentric phase," "added 0.5kg," "skipped last set." This is the rehab journal. | LOW | P1 — already in scope |
-| Pain/difficulty rating per session (0-5 or 0-10) | The core rehab signal. Clinical protocols track pain during, immediately after, and next-day. A simple 0-5 number captures this. | LOW | P1.5 — not yet in scope, HIGH value |
-| Progression note on template exercise | "Advance weight when 3x15 for 2 consecutive sessions with pain <= 2/5." The PT tells you the rule; you record it here. | LOW | P2 — not yet in scope, MEDIUM value |
-| Session-to-session history per exercise | See that you did 3x12 @ 2kg last Tuesday and 3x15 @ 2kg this Tuesday. Trend visible without a chart. | LOW-MEDIUM | P2 — requires per-exercise log history view |
-| "Did I do PT today?" calendar segment (already in scope) | The most important feature. Consistency is the primary outcome variable in tendon rehab. | MEDIUM | P1 — already in scope |
-
-**What generic workout apps miss for PT:**
-- No concept of "prescribed vs. actual" — they just log what you did
-- No pain/symptom field
-- No rehab progression rules
-- No session-level notes linked to the day's completion state
-
-**What to explicitly NOT add for PT:**
-- Exercise video library (scope creep; user knows their exercises from their PT)
-- PT-therapist communication / sharing (no backend, no auth)
-- Automated progression algorithms (too complex; user and PT make this decision)
-- Exercise form analysis (computer vision; completely out of scope)
-
----
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|------------------|-------------|
+| Full nutrition database search/browse (like MFP's 14M foods) | Feels like "what real apps have"; useful when AI parse is wrong or unavailable | Massive scope (licensing/hosting a food DB, search UX, barcode) for a 2-user app where AI parsing + auto-library already covers 95% of repeat entries | Keep the non-AI fallback as a *structured manual entry form* (name + kcal + P/C/F fields), not a searchable database |
+| Photo-based AI food recognition (snap a plate, AI identifies items) | MacroFactor and Cronometer both ship this in 2025-2026 and it looks like table stakes for "AI food logging" | PROJECT.md explicitly scopes AI entry to speak/type text only; photo recognition is a materially harder parsing problem (multi-item segmentation, portion estimation) and doubles AI cost/latency | Text/voice-to-text freeform parsing only, as already decided |
+| Automatic fuzzy-merge of near-duplicate library items ("chicken breast" vs "Chicken Breast" vs "grilled chicken") | Prevents a cluttered auto-library; feels like it "should just work" | True fuzzy/semantic dedupe (edit distance + synonym matching) is an open-ended NLP problem with real false-positive risk (merging two genuinely different foods); over-engineering for 2 users who can just glance at their own short list | Normalize on exact-match of a lowercased/trimmed name only; on a near-miss, show a lightweight "Use existing 'Chicken breast' or save as new?" prompt at log time — human makes the call, not an algorithm |
+| Streak freezes / grace periods / "protect my streak" mechanics | Common gamification ask once a streak view exists — users fear losing a chain | PROJECT.md explicitly excludes streak-freeze gamification as scope creep; also encourages "logging to protect a number" rather than genuine consistency | If motivation dips are a problem later, address via Dashboard trend context (e.g., "3 of last 7 days closed"), not artificial streak protection |
+| Real-time or push-notification reminders ("You haven't logged today!") | Feels like an obvious retention lever, and Apple Fitness itself nudges via notifications | Explicitly out of scope per PROJECT.md; also requires background service worker push permissions that add real complexity to an offline-first PWA with no backend to trigger them | Rely on the visual closure/ring state being satisfying enough on open; this is the core value bet already made |
+| Weight goal/target with "days to goal" projections | Common in weight-loss apps (Happy Scale, Lose It) and feels motivating | Adds a whole projection/rate-of-loss modeling surface (calorie deficit math, TDEE estimation) that isn't in PROJECT.md scope — scope creep from "track weight" into "coach weight loss" | Trend line + raw log only; no projected end-date or required-deficit calculations for v2 |
+| Configurable/complex smoothing algorithm choice (like Happy Scale's 4 methods: EMA, 7-day MA, Happy Scale Smoothing, Double ES) | Power users of weight-tracking apps expect algorithm choice | Massive UX/complexity overkill for 2 casual users; Happy Scale itself recommends its own most complex method by default, suggesting most users don't want to choose | Ship one fixed, well-tuned smoothing method (recommend 7-day trailing EMA — see below) with no user-facing algorithm toggle |
 
 ## Feature Dependencies
 
 ```
-4-Segment Calendar View
-    └──requires──> Daily Log State (is each area "complete" today?)
-                       └──requires──> Food Log (any meals logged = partial; hit target = full?)
-                       └──requires──> PT Session Log (any session logged today)
-                       └──requires──> Step Entry (step logged today)
-                       └──requires──> Lift Check-in (yes/no logged today)
+[AI freeform food parsing]
+    └──requires──> [Anthropic API key storage + settings UI]
+    └──requires──> [Local structured-entry fallback] (must exist for offline/no-key case)
+    └──enhances──> [Smart auto-library]
 
-Food Log Entry
-    └──requires──> Food Library (foods must exist to be logged)
-    └──enhances──> Macro Progress Bars (bars update on log)
+[Smart auto-library]
+    └──requires──> [AI freeform food parsing] (or fallback manual entry — library needs *a* parse source)
+    └──enables──> [One-tap re-log of recent/frequent items]
 
-PT Session Log
-    └──requires──> PT Template (session is logged against a template)
-    └──enhances──> Session History per Exercise (enables trend view)
+[One-tap lift check-off] ──already exists (v1)
+[One-tap cardio check-off] ──net-new, same pattern as lift check-off
 
-Macro Progress Bars
-    └──requires──> Daily Macro Targets (configurable in Settings)
-    └──requires──> Food Log Entries (data source)
+[Daily closure ring]
+    └──requires──> [Food logged signal] (from AI parse OR fallback OR auto-library re-log)
+    └──requires──> [Lift check-off state]
+    └──requires──> [Cardio check-off state]
+    └──conflicts with──> [v1 4-quadrant streak calendar] (being replaced, not both)
 
-Step Progress Indicator
-    └──requires──> Step Goal (configurable in Settings)
-    └──requires──> Step Entry (manual, per day)
+[Weight entry]
+    └──enables──> [Weight trend smoothing/chart]
 
-JSON Export
-    └──requires──> All data models (food library, PT templates, logs, settings)
+[Dashboard tab]
+    └──requires──> [Daily closure history] (for training/eating consistency trend)
+    └──requires──> [Weight trend smoothing/chart]
+    └──requires──> [Food logged / adherence signal per day]
 
-Pain/Difficulty Rating [proposed addition]
-    └──enhances──> PT Session Log (optional field)
-    └──enhances──> Session History per Exercise (trend signal)
-
-Meal Templates [v1.x]
-    └──requires──> Food Library (template references library foods)
-    └──enhances──> Food Log Entry (one-tap bulk add)
+[Hevy-sync-ready data model] ──enhances──> [Lift/cardio check-off] (adds a `source` field now, no behavior change until sync is built later)
 ```
 
 ### Dependency Notes
 
-- **Calendar requires all four logging areas:** The 4-segment indicator cannot be built until all four log types exist. Build all four in Phase 1 or the calendar renders empty.
-- **Food log requires library:** You cannot log food that doesn't exist in the library. The food creation UI must be built before or alongside food log entry.
-- **PT session requires template:** A session is "log against this template." Templates must exist first. Ship template creation in the same phase as session logging.
-- **Macro bars require targets:** Showing progress % requires a denominator. Settings must ship with food logging, not after.
-- **JSON export requires stable data models:** Export should come after the data model stabilizes (after all four logging areas ship). Exporting an early-phase schema and then changing it creates import incompatibility.
+- **AI parsing requires an API key + fallback:** Building the daily-closure ring and Dashboard on top of "food logged" as a signal means that signal must be reliable even without network/API key — so the structured local fallback isn't optional polish, it's a hard dependency of the closure feature working at all. Build the fallback in the same phase as AI parsing, not later.
+- **Auto-library requires *a* parse source, not necessarily AI:** The library can be seeded by either AI-parsed results or the manual fallback form — both write the same normalized record shape. This decouples "library exists" from "AI parsing must always succeed."
+- **Daily closure conflicts with the v1 calendar:** These are mutually exclusive UI concepts for the same underlying "did I log today" data — do not build the new ring alongside the old quadrant view; it's an explicit replace.
+- **Dashboard requires closure history to already be capturable:** Dashboard is downstream of the closure model — sequence closure/logging phases before Dashboard, not in parallel, since Dashboard is a read/aggregate view over data the other features produce.
+- **Hevy-sync-readiness is a schema-only dependency:** No behavior depends on it now; it just means the lift/cardio check-off record shape should be decided with a `source` discriminator up front so no migration is needed later.
 
----
+## Ring-Closure Semantics — Options and Recommendation
+
+This is the single highest-leverage open decision (already flagged in PROJECT.md/CLAUDE.md as "exact visual/completion TBD"). Options, drawn from how Apple and nutrition apps define "done":
+
+**Option A — Any-log per segment (binary presence)**
+- Food segment closes the moment *any* food is logged that day, regardless of whether it hits calorie/macro targets.
+- Matches Apple's Stand ring (any 1 minute of standing in the hour closes it — not "stood for the whole hour").
+- Pro: Lowest friction, matches "speak/type and done" entry-friction bar from PROJECT.md; avoids punishing a day where the user logged honestly but went over/under target.
+- Con: A user could log one small snack and "close" the food segment while wildly under-eating — the ring stops meaning "did well" and starts meaning "did anything."
+
+**Option B — Hit-target per segment (goal-based)**
+- Food segment closes only when logged calories/macros land within a target band (e.g., ±10% of calorie goal, protein ≥ target).
+- Matches Apple's Move ring (must reach the *full* calorie goal, not just "moved at all").
+- Pro: Closer to "actually on track," which matters more for two people cutting/tracking macros with a real physique goal.
+- Con: Higher friction psychologically — a legitimately-logged but over/under day never closes, which can feel punishing and erode the "satisfying win" feeling that PROJECT.md identifies as the core value. Apple's own Move ring is well documented as the ring users find hardest to close consistently and most often adjust/lower to make achievable.
+
+**Option C — Hybrid (recommended): any-log closes the segment visually "logged," with a secondary in-ring indicator (color/fill intensity) for on-target vs off-target**
+- The ring/segment fills (closes) on any log — preserving the low-friction, always-achievable daily win described in PROJECT.md's core value statement.
+- A secondary visual cue (e.g., a different shade, a small checkmark vs a dot, or an inner ring) distinguishes "logged and within target" from "logged but off target," surfaced prominently on the Dashboard's adherence view rather than gating the daily closure itself.
+- This mirrors Apple's own general pattern: the *ring itself* is calibrated to be achievable daily (so closing feels good and habitual), while more precise "was this a good day" analysis lives in longer-term views (weekly/monthly summaries), not in daily pass/fail framing.
+- **Recommendation: adopt Option C.** It resolves the PROJECT.md open question ("any-log" vs "hit-target") by not forcing an either/or — closure = low-friction presence signal (protects the core value of an always-winnable daily loop), while the Dashboard's adherence score (industry research cited below shows 80%+ adherence is the outcome that actually predicts results) carries the "did I actually hit my macros" precision that Option B was trying to capture.
+- Lift and cardio check-offs are inherently binary already (Option A only makes sense for them — there's no "partial" lift day in this model), so this hybrid only needs special handling for the food segment.
+
+Confidence: MEDIUM — Apple's own ring-design tradeoffs (Move=goal-based vs Stand=any-activity) are well documented; the specific hybrid resolution for food is a synthesized recommendation, not observed in a shipped competitor product.
+
+## Weight Trend Smoothing — Pattern and Recommendation
+
+Raw daily weigh-ins are noisy (water, sodium, GI content, time-of-day) — every credible weight-trend tool smooths before displaying a trend line. Patterns observed:
+
+- **Simple 7-day (or N-day) trailing moving average** — averages the last N raw entries. Cheap, well-understood, but lags behind real trend changes by several days and needs entries most days to stay meaningful.
+- **Exponential moving average (EMA/exponential smoothing)** — weights recent entries more heavily than older ones; reacts faster than a flat moving average while still damping single-day noise. Standard formula: `trend_today = alpha * raw_today + (1 - alpha) * trend_yesterday`, with alpha commonly in the 0.1-0.3 range for daily weight data.
+- **Advanced bidirectional smoothing (Happy Scale's proprietary method, double-exponential smoothing)** — considers both past *and* future data points to reduce lag further, at the cost of retroactively adjusting recent days' trend values as new data comes in, and materially higher implementation complexity.
+
+**Recommendation:** Use a simple trailing EMA (alpha ≈ 0.1-0.15, tunable) computed client-side over the weight log. This gives a smooth, always-moving trend line without the complexity or "recent days change after the fact" surprise of bidirectional methods, and doesn't require a configurable-algorithm UI (an anti-feature above). Missing days should simply not update the EMA (carry forward last computed trend value) rather than requiring daily entries to remain valid — this matches the low-friction, "one number, no discipline enforcement" table-stakes expectation. Show raw dots + smoothed line together on the Dashboard chart (both signals are standard in Libra/Trendweight/Happy-Scale-style tools) so users can see actual entries alongside the trend.
+
+Confidence: HIGH on the general math/pattern (well-documented, corroborated across Happy Scale docs and general exponential-smoothing literature); MEDIUM on the specific alpha recommendation (a reasonable default, should be spot-checked against a few weeks of real data during implementation rather than treated as exact).
+
+## AI Food-Parse UX — Confirm/Edit Flow
+
+Based on MacroFactor's shipped (beta) AI logging flow, the expected shape of a "good" AI-parse UX is:
+
+1. **Input:** freeform text (typed or voice-to-text transcribed) — no structured fields required at input time.
+2. **Parse (async):** call sent to Claude Haiku; show a lightweight loading/streaming state rather than a blocking spinner if latency is non-trivial (MacroFactor "streams" results into the plate as they resolve).
+3. **Structured, editable result — never auto-committed:** the parsed output must render as a **pre-populated but editable form** (name, quantity/unit, calories, protein, carbs, fat), not a locked confirmation dialog. Every mainstream implementation reviewed treats "user reviews and can tweak before it's saved" as non-negotiable — MacroFactor states this explicitly ("recommend everyone review results"), and no competitor auto-logs an AI guess without this step.
+4. **Explicit confirm action** (tap "Log" / "Save") — separate from the parse step, so parsing failures or bad guesses never silently create a log entry.
+5. **Failure/ambiguity handling:** if the parser can't confidently extract a food+quantity, fall back to presenting the raw structured-entry form pre-filled with whatever *was* extracted (e.g., calories present but protein missing) rather than blocking the user or returning an error with no path forward.
+6. **Offline/no-key path:** the same structured form (from step 3) must be reachable directly, without ever calling the AI, as the local fallback — meaning the "editable structured food record" UI is actually the single core building block; AI just pre-fills it, it doesn't replace it.
+
+Confidence: MEDIUM — based on MacroFactor's public marketing/help-doc description of their beta AI feature, not a hands-on trial; the general "always editable, always explicit confirm" pattern is corroborated across every food-logging app surveyed (MFP, Cronometer, MacroFactor) and considered a firm expectation, not a nice-to-have.
+
+## Auto-Library and Quick Re-Log Patterns
+
+- **Library entry = a side effect of logging, not a separate CRUD flow.** Every successful parse+confirm (AI or fallback) writes a reusable library record automatically — this is the "auto-library" differentiator and removes v1's manual "create food" step entirely.
+- **Dedupe on exact normalized match only** (trim + lowercase + collapse whitespace) at auto-save time. If a normalized match already exists in the library, update/reuse that record rather than creating a second one; do not attempt fuzzy/semantic matching (see Anti-Features) — surface a lightweight "Use existing X?" choice only when the *user* is actively re-logging and types something close to an existing name, not as background auto-merging.
+- **Recent/frequent list surfaced above search, not below it** — MyFitnessPal's swipe-to-repeat and Quick Add patterns confirm the expectation: the most common action (log something you've logged before) should require the fewest taps, meaning frequently-used or most-recent items are the *default* visible list when opening the food entry screen, with freeform AI entry as the escape hatch for anything new — not the other way around.
+- **One-tap re-log copies the full prior record** (name + quantity + macros) into today's log with a single interaction — no re-parsing, no re-confirming needed for an exact repeat, though the copied entry should remain editable in case portion size changed.
+
+Confidence: MEDIUM — MyFitnessPal's recent/quick-add/copy-meal patterns are well documented and directly transferable; the specific "auto-save on every parse with exact-match dedupe" design is a synthesized recommendation (no competitor publishes an "auto-library with zero manual creation" flow to compare against directly), flagged LOW-MEDIUM on that specific piece.
 
 ## MVP Definition
 
-### Launch With (v1)
+### Launch With (v2.0)
 
-Minimum viable product — the "working personal tool" milestone.
+Minimum viable product for this milestone — matches PROJECT.md's Active requirements list.
 
-- [ ] Food library (create food with name + macros + optional photo) — foundational data layer
-- [ ] Food log (log foods to today, per meal label, see macro progress bars) — primary daily interaction
-- [ ] Daily macro targets (calories, P, C, F) in Settings — makes the progress bars meaningful
-- [ ] PT templates (create reusable template: exercise name + target sets x reps) — setup once
-- [ ] PT session log (log a session against a template with actual sets x reps + notes) — daily PT logging
-- [ ] Manual step entry with step goal + progress indicator — simplest of the four areas
-- [ ] Daily lift check-in (yes/no + optional note) — lowest-friction interaction
-- [ ] 4-segment day indicator on today view (partial fill per area) — the core motivator
-- [ ] Calendar month view (cells show per-day completion state) — streak loop closes here
-- [ ] Installable PWA (manifest + service worker + offline IndexedDB) — phone home-screen delivery
-- [ ] JSON export — data portability safety net before daily use begins
-- [ ] Dark mode, minimal aesthetic
+- [ ] AI freeform food parsing (Claude Haiku) with editable confirm-before-log screen — core entry-friction bet
+- [ ] Local structured-entry fallback (same editable form, no AI call) — required for offline/no-key correctness, not optional polish
+- [ ] Auto-library (exact-normalized-match dedupe) + recent/frequent one-tap re-log list
+- [ ] One-tap lift check-off (carried from v1) + one-tap cardio check-off (net new, same pattern)
+- [ ] Daily weight entry (single field, single save)
+- [ ] Daily closure ring using the Option C hybrid semantics (any-log presence per segment, with target-hit as a secondary indicator, not a closure gate)
+- [ ] Daily tab: today's ring/closure state + all four entry points (food, lift, cardio, weight)
+- [ ] Weight trend chart with EMA smoothing (raw dots + smoothed line)
+- [ ] Dashboard tab: weight trend + eating adherence (% days logged / on-target) + training consistency (lift/cardio check-off rate) over weeks/months
+- [ ] JSON export/import updated for v2 schema (food library, closure records, weight log, check-off `source` field)
 
-### Add After Validation (v1.x)
+### Add After Validation (v2.x)
 
-Add once the core loop is confirmed working and daily use is established.
+- [ ] Tune EMA alpha and adherence-band thresholds against real usage data once both users have a few weeks of logs
+- [ ] Hevy API auto-sync for lift/cardio check-offs (data model already supports it via `source` field; building the actual sync is deferred until a user has Hevy Pro)
+- [ ] Refine ambiguous-parse handling (e.g., multi-item freeform entries like "chicken and rice with veggies") if single-item assumption proves too limiting in real use
 
-- [ ] Pain/difficulty rating (0-5) on PT sessions — HIGH value for rehab feedback; LOW complexity; left out of v1 only because it's not yet in scope and should be validated as wanted
-- [ ] Session history per exercise (see previous actuals when logging) — motivation + rehab signal
-- [ ] Meal templates / combo recall (save a meal set, re-log with one tap) — major QoL for repeat eaters
-- [ ] Streak count display (consecutive complete days counter) — amplifies calendar visual
-- [ ] Progression notes on PT template exercises — captures PT advice in-app
-- [ ] JSON import (restore from export) — completes the backup/restore loop
+### Future Consideration (out of this milestone)
 
-### Future Consideration (v2+)
-
-Defer until v1.x is stable and there's evidence of demand.
-
-- [ ] Per-exercise history chart (visual trend over time for a specific PT exercise)
-- [ ] Weekly macro summary view (how the week is trending vs. targets)
-- [ ] Year-view calendar heatmap (GitHub-style full-year overview once there's enough data to show)
-
----
+- [ ] Photo-based food recognition — explicitly deferred per PROJECT.md, larger AI-cost/complexity jump than text parsing
+- [ ] Weight goal projections / time-to-goal estimates — scope creep from tracking into coaching
+- [ ] Configurable smoothing algorithm choice — unnecessary complexity for 2 users
+- [ ] Any shared/social view between the two users — deliberately deferred per PROJECT.md (independent installs)
 
 ## Feature Prioritization Matrix
 
 | Feature | User Value | Implementation Cost | Priority |
-|---------|------------|---------------------|----------|
-| 4-segment day indicator | HIGH | MEDIUM | P1 |
-| Calendar month view | HIGH | MEDIUM | P1 |
-| Food library + log | HIGH | MEDIUM | P1 |
-| Macro progress bars | HIGH | LOW | P1 |
-| PT templates + session log | HIGH | MEDIUM | P1 |
-| Step entry + goal progress | HIGH | LOW | P1 |
-| Lift check-in | HIGH | LOW | P1 |
-| PWA install + offline | HIGH | MEDIUM | P1 |
-| JSON export | MEDIUM | MEDIUM | P1 |
-| Daily macro targets (Settings) | HIGH | LOW | P1 |
-| Pain rating per PT session | HIGH | LOW | P2 |
-| Session history per exercise | MEDIUM | MEDIUM | P2 |
-| Meal templates / combo recall | HIGH | MEDIUM | P2 |
-| Streak count display | MEDIUM | LOW | P2 |
-| Progression notes on template | MEDIUM | LOW | P2 |
-| JSON import | MEDIUM | MEDIUM | P2 |
-| Per-exercise history chart | MEDIUM | MEDIUM | P3 |
-| Weekly macro summary | LOW | LOW | P3 |
-| Year-view heatmap | LOW | MEDIUM | P3 |
+|---------|------------|----------------------|----------|
+| AI freeform food parsing + confirm/edit UI | HIGH | MEDIUM-HIGH | P1 |
+| Local structured fallback form | HIGH (unblocks offline correctness) | LOW-MEDIUM | P1 |
+| Auto-library + recent/frequent one-tap re-log | HIGH | MEDIUM | P1 |
+| Cardio one-tap check-off | MEDIUM-HIGH | LOW | P1 |
+| Weight entry | HIGH | LOW | P1 |
+| Daily closure ring (hybrid semantics) | HIGH (core motivator) | MEDIUM | P1 |
+| Weight trend smoothing (EMA) | MEDIUM-HIGH | LOW-MEDIUM | P1 |
+| Dashboard (weight + adherence + consistency) | HIGH | MEDIUM-HIGH | P1 |
+| Hevy-sync-ready `source` field on check-offs | LOW now / HIGH later if skipped | LOW | P1 (cheap insurance) |
+| Actual Hevy API sync | MEDIUM | HIGH | P3 (deferred, needs Hevy Pro) |
+| Fuzzy/semantic library dedupe | LOW-MEDIUM | HIGH | P3 (anti-feature, avoid) |
+| Photo food recognition | MEDIUM | HIGH | P3 (explicitly out of scope) |
 
 **Priority key:**
-- P1: Must have for launch
-- P2: Should have, add when possible (v1.x)
-- P3: Nice to have, future consideration (v2+)
-
----
+- P1: Must have for this milestone (v2.0)
+- P2: Should have, add when possible (none identified beyond P1/P3 for this scoped milestone)
+- P3: Deferred/out of scope for v2.0
 
 ## Competitor Feature Analysis
 
-| Feature | MyFitnessPal | MacroFactor | Cronometer | Strong / Hevy | This Project |
-|---------|--------------|-------------|------------|---------------|--------------|
-| Food logging | Barcode + search 14M DB | Verified DB, timeline log | Verified DB, 84+ nutrients | None | Custom personal library, recall by recents/name |
-| Macro progress | Daily bars | Daily + weekly targets | Per-nutrient bars | None | Daily bars for cals + P + C + F only |
-| Workout logging | Basic | None | None | Sets/reps/weight + templates | PT templates with target vs. actual, notes |
-| Pain/difficulty tracking | None | None | None | RPE per set | Pain rating per session (proposed v1.x) |
-| Streak / calendar | None | None | None | Calendar history | 4-segment month calendar (core differentiator) |
-| Habit check-in | None | None | None | None | Lift check-in (yes/no + note) |
-| Step tracking | Via integrations | Via integrations | Via integrations | None | Manual entry + goal |
-| Offline / local | Cloud-required | Cloud-required | Cloud-required | Cloud sync | 100% local IndexedDB |
-| Gamification | Badges, streaks | None | None | Progress graphs | 4-segment indicator only (no badge bloat) |
-| Data export | CSV (Premium) | CSV | CSV | CSV | JSON (open format, free) |
-| Auth required | Yes | Yes | Yes | Yes | None |
-
-**Key insight:** No competitor combines PT rehab tracking + macro logging + habit check-ins + streak visualization in a single unified view. The 4-segment calendar is genuinely novel in this combination.
-
----
+| Feature | MacroFactor | MyFitnessPal | Apple Fitness | Happy Scale | Our Approach |
+|---------|-------------|--------------|----------------|-------------|--------------|
+| AI food entry | Photo + text, streams results into editable "plate", beta as of 2025 | Meal Scan (photo) + traditional search; AI is additive, not primary | N/A | N/A | Text/voice only (no photo), AI-first with structured fallback as equal-citizen path, not a secondary option |
+| Confirm before log | Explicit editable review step, required | Standard log-then-edit | N/A | N/A | Same pattern: editable structured form before save, no auto-commit |
+| Recent/repeat logging | Custom foods + recipes | Quick Add, swipe-to-repeat-yesterday, saved Meals | N/A | N/A | Auto-library is the *only* library — every parse builds it, no manual creation step at all |
+| Daily completion visual | Macro bars only, no ring/streak concept | Streak counter (days logged), no ring | 3-ring Move/Exercise/Stand, any-activity vs goal-based per ring | N/A | 3(ish)-segment ring: food/lift/cardio, hybrid any-log + secondary on-target indicator |
+| Weight trend | Basic weight log, no smoothing emphasis | Basic weight log | N/A (not weight-focused) | Multiple smoothing algorithms (EMA, MA, proprietary, double-ES), user-selectable | Fixed EMA, no user-facing algorithm choice — raw dots + one smoothed line |
+| Cross-domain dashboard | Food-focused only | Food-focused only | Activity-focused only | Weight-focused only | Combines weight + eating adherence + training consistency in one Dashboard — the actual product synthesis of this milestone |
 
 ## Sources
 
-- [MacroFactor vs MyFitnessPal 2025 comparison](https://macrofactor.com/macrofactor-vs-myfitnesspal-2025/)
-- [MacroFactor food logging speed benchmark](https://macrofactorapp.com/best-food-logging-app/)
-- [MacroFactor favorite foods / recall patterns](https://macrofactor.com/favorite-foods/)
-- [Cronometer vs MFP 2026](https://nutrifytracker.com/blog/cronometer-vs-mfp)
-- [Strong vs Hevy 2026](https://gymgod.app/blog/strong-vs-hevy)
-- [Hevy app features and user reviews](https://www.hotelgyms.com/blog/hevy-workout-app-review-the-up-and-comer-taking-the-fitness-world-by-storm)
-- [Apple Watch activity rings psychology](https://trophy.so/blog/the-psychology-of-apple-watchs-close-your-rings)
-- [Gamification S-curve research, Frontiers in Psychology 2025](https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2025.1671543/full)
-- [Habit tracker streak retention patterns](https://habi.app/insights/best-streak-tracker-apps/)
-- [GitHub-style heatmap adoption in fitness/habit apps](https://www.jqueryscript.net/blog/best-github-style-calendar-heatmap.html)
-- [Physical therapy app features users want 2025](https://www.exer.ai/posts/best-physical-therapy-apps)
-- [Tennis elbow rehab tracking and progression](https://orthoinfo.aaos.org/globalassets/pdfs/2022-therapeutic-exercise-program-for-epicondylitis.pdf)
-- [Comprehensive rehab program for lateral elbow tendinopathy (PMC)](https://pmc.ncbi.nlm.nih.gov/articles/PMC6769266/)
-- [UX anti-patterns causing app abandonment 2025](https://www.newsletter.designproject.io/p/why-users-abandon-your-app-ux-psychology-insights-for-2025)
-- [Fitness app UX design challenges 2025](https://www.uxmatters.com/mt/archives/2025/07/designing-a-fitness-platform-ux-design-challenges-and-solutions.php)
-- [PWA best practices 2025](https://learn.microsoft.com/en-us/microsoft-edge/progressive-web-apps/how-to/best-practices)
+- MacroFactor — [AI-Powered Food Logging](https://macrofactor.com/ai-food-logging/) (MEDIUM confidence — official product page, describes shipped beta behavior)
+- MacroFactor Help Center — [AI Food Logging](https://help.macrofactorapp.com/en/articles/258-ai-food-logging) (MEDIUM confidence — official docs)
+- MyFitnessPal Blog — [Copy and Remember Meals](https://blog.myfitnesspal.com/copy-and-remember-meals/) (HIGH confidence — official docs describing shipped feature)
+- MyFitnessPal Support — [Your Today tab](https://support.myfitnesspal.com/hc/en-us/articles/39985611667341-Your-Today-tab) (HIGH confidence — official docs)
+- Apple — [Close Your Rings](https://www.apple.com/watch/close-your-rings/) (HIGH confidence — official product description)
+- AppleToolBox — [Move vs. Exercise Rings](https://appletoolbox.com/apple-watch-move-vs-exercise-rings/) (MEDIUM confidence — third-party but consistent with Apple's own docs on any-activity Stand ring vs goal-based Move ring)
+- Apple Support — [Adjust your Activity ring goals](https://support.apple.com/en-ca/guide/watch/apd29b30023c/watchos) (HIGH confidence — official docs)
+- Happy Scale — [Support / smoothing methods](https://happyscale.com/support) and [Version 4.6 notes](https://happyscale.com/version46) (MEDIUM confidence — official vendor docs describing their own algorithm tradeoffs)
+- Wikipedia — [Exponential smoothing](https://en.wikipedia.org/wiki/Exponential_smoothing) (HIGH confidence — standard reference math, used to corroborate EMA recommendation)
+- Trophy.so — [The Psychology of Apple Watch's "Close Your Rings"](https://trophy.so/blog/the-psychology-of-apple-watchs-close-your-rings) (LOW-MEDIUM confidence — third-party analysis, used only for general streak-psychology framing, not as a primary technical source)
+- General fuzzy-matching literature (DataLadder, WinPure guides) (LOW confidence for this application — used only to establish that fuzzy dedupe is a nontrivial, error-prone technique, supporting the anti-feature recommendation, not to source a specific implementation pattern)
+- `.planning/PROJECT.md` (project source of truth for v2.0 requirements, constraints, and already-locked decisions)
 
 ---
-
-*Feature research for: Personal PWA health tracker (PT + macros + steps + lifts)*
-*Researched: 2026-04-19*
+*Feature research for: HealthTracker v2.0 Duo Redesign — AI food parsing, ring closure, weight trend, dashboard*
+*Researched: 2026-08-08*

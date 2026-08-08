@@ -1,908 +1,424 @@
-# Architecture Research
+# Architecture Research — v2.0 Duo Redesign Integration
 
-**Domain:** Fully-local IndexedDB PWA — personal health tracker
-**Researched:** 2026-04-19
-**Confidence:** HIGH (IndexedDB/Dexie patterns well-established; OPFS comparison verified via MDN + web.dev)
+**Domain:** Integration of new v2 features (AI food parsing, auto-library, lift/cardio check-offs, weight tracking, ring-closure) onto the existing HealthTracker v1 codebase
+**Researched:** 2026-08-08
+**Confidence:** HIGH (Dexie migration mechanics, layering, OPFS, existing code) / MEDIUM (Anthropic browser-direct call pattern, current model id) / LOW→flagged (exact closure/ring completion semantics — explicitly unresolved, needs design lock)
 
----
+> This document supersedes the v1.0 `ARCHITECTURE.md` (2026-04-19, standard fully-local IndexedDB PWA patterns) for the v2.0 milestone. That research is still valid for the parts of the system unchanged in v2 (Dexie/OPFS fundamentals, layering conventions, SW strategy) and remains available via git history and `HEALTHTRACKER-CONTEXT.md`'s consolidated appendix. This document focuses specifically on **how the new v2 features integrate with the existing, already-shipped v1 codebase**.
 
-## Standard Architecture
-
-### System Overview
+## Existing System (v1, as shipped) — Ground Truth From Reading the Code
 
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│                         UI Layer (React)                           │
-│                                                                    │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐          │
-│  │    PT    │  │   Food   │  │  Steps   │  │  Lifts   │          │
-│  │  Feature │  │  Feature │  │  Feature │  │  Feature │          │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘          │
-│       │              │              │              │               │
-│  ┌────┴──────────────┴──────────────┴──────────────┴────────────┐ │
-│  │          Calendar / Streak Feature (derived reads)            │ │
-│  └────────────────────────────┬──────────────────────────────────┘ │
-│                               │                                    │
-│  ┌────────────────────────────┴──────────────────────────────────┐ │
-│  │                  Settings / Export Feature                    │ │
-│  └────────────────────────────────────────────────────────────────┘ │
-└───────────────────────────────┬────────────────────────────────────┘
-                                │ useLiveQuery / liveQuery()
-┌───────────────────────────────┴────────────────────────────────────┐
-│                       Service Layer                                │
-│                                                                    │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌─────────────┐  │
-│  │  pt.svc.ts │  │food.svc.ts │  │steps.svc.ts│  │lifts.svc.ts │  │
-│  └────────────┘  └────────────┘  └────────────┘  └─────────────┘  │
-│  ┌──────────────────────────────────────────────────────────────┐  │
-│  │          streak.svc.ts  (derived, reads other stores)        │  │
-│  └──────────────────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────────────┐  │
-│  │          export.svc.ts  (JSON dump / restore all stores)     │  │
-│  └──────────────────────────────────────────────────────────────┘  │
-└───────────────────────────────┬────────────────────────────────────┘
-                                │ Dexie table APIs
-┌───────────────────────────────┴────────────────────────────────────┐
-│                    Database Layer (Dexie.js)                       │
-│                                                                    │
-│  db.ts — single Dexie instance, all version() declarations        │
-│                                                                    │
-│  ┌──────────────┐  ┌───────────────┐  ┌───────────────┐           │
-│  │ ptTemplates  │  │  ptSessions   │  │     foods     │           │
-│  └──────────────┘  └───────────────┘  └───────────────┘           │
-│  ┌──────────────┐  ┌───────────────┐  ┌───────────────┐           │
-│  │  mealEntries │  │  stepEntries  │  │ liftCheckins  │           │
-│  └──────────────┘  └───────────────┘  └───────────────┘           │
-│  ┌──────────────┐                                                  │
-│  │    goals     │                                                  │
-│  └──────────────┘                                                  │
-└───────────────────────────────┬────────────────────────────────────┘
-                                │
-┌───────────────────────────────┴────────────────────────────────────┐
-│               Service Worker (vite-plugin-pwa + Workbox)          │
-│                                                                    │
-│  Precache: app shell (HTML, JS, CSS, icons)                       │
-│  Runtime: StaleWhileRevalidate for font CDN (if any)              │
-│  Runtime: CacheOnly for user photos served from OPFS              │
-└────────────────────────────────────────────────────────────────────┘
+UI (routes/, features/*)
+   │ useLiveQuery
+Feature hooks (features/*/hooks.ts)
+   │
+Services (services/*.svc.ts)  ──────────────► lib/dayKey.ts, lib/photoStore.ts (OPFS)
+   │ Dexie Table API
+db/db.ts (single Dexie instance; HashRouter: /today /calendar /day/:dayKey /settings)
+   version(1).stores({ ptTemplates, ptSessions, foods, mealEntries, stepEntries, liftCheckins, goals })
 ```
 
-### Component Responsibilities
+Layering is already enforced by convention (confirmed by reading the code, not assumed): feature components → own `hooks.ts` → own `*.svc.ts` → `db.ts`. `streak.svc.ts` is the one existing cross-cutting exception (reads all 4 daily-tracking stores in one `Promise.all` per visible range — explicitly commented in the file as "the ONE place per month-range where the calendar touches IDB"). `export.svc.ts` is the other (reads all 7 stores + loops OPFS). This precedent is exactly the shape `closure.svc.ts` and `export.svc.ts` v2 should follow — no new layering pattern is needed, only new cross-cutting services alongside the existing ones.
 
-| Component | Responsibility | Implementation |
-|-----------|---------------|----------------|
-| Feature slice (PT / Food / Steps / Lifts) | UI forms, display, entry flows for that domain | React components + useLiveQuery hooks |
-| Calendar / Streak feature | Derived read across all 4 domains for a date range; renders 4-segment indicators | Aggregating liveQuery; reads ptSessions, mealEntries, stepEntries, liftCheckins |
-| Settings / Export feature | Goals config CRUD; JSON export/import trigger; backup UX | Goals service + export.svc.ts |
-| `*.svc.ts` service modules | Typed wrappers around Dexie table calls; query logic isolated from UI | Plain TS functions, no React |
-| `db.ts` | Single Dexie instance; all schema versions declared here | Dexie class instantiation |
-| Service worker | Offline app shell delivery; photo cache | workbox-precaching + workbox-routing |
+## Target System (v2)
 
----
-
-## Object Store Schema
-
-All stores use Dexie.js syntax. Primary key is listed first, then indexes in the `stores()` string.
-
-### `ptTemplates`
-
-Reusable exercise definitions. Rarely written, frequently read during session logging.
-
-```typescript
-interface PTTemplate {
-  id: string;              // uuid, manual primary key
-  name: string;            // e.g. "Wrist Flexor Stretch"
-  targetSets: number;
-  targetReps: number;
-  targetDurationSecs?: number;
-  notes?: string;
-  createdAt: number;       // Unix ms — for ordering in library list
-}
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ UI — routes/DailyScreen, routes/DashboardScreen, routes/DayDetailScreen, │
+│      routes/SettingsScreen                                               │
+│  features/food (freeform entry box, auto-library chips)                  │
+│  features/checkins (lift + cardio one-tap tiles)                         │
+│  features/weight (entry + trend)                                         │
+│  features/closure (ring/segment indicator — replaces features/calendar's │
+│      4-quadrant DayCell)                                                 │
+└───────────────────────────┬────────────────────────────────────────────┘
+                            │ useLiveQuery
+┌───────────────────────────┴────────────────────────────────────────────┐
+│ Services                                                                │
+│  meals.svc.ts (existing, minor changes)                                 │
+│  food.svc.ts (evolves: dedupe, usage tracking)                          │
+│  parse.svc.ts  ── provider boundary ── anthropic.provider.ts            │
+│                                     └── local.provider.ts                │
+│  checkins.svc.ts (NEW — replaces lifts.svc.ts; lift + cardio)           │
+│  weight.svc.ts (NEW)                                                    │
+│  closure.svc.ts (NEW — replaces streak.svc.ts)                          │
+│  goals.svc.ts (existing, unchanged or lightly extended)                 │
+│  export.svc.ts (v2 envelope) / import.svc.ts (NEW)                      │
+│  apiKeyStore.ts (NEW, lib/ not services/ — see API key section)         │
+└───────────────────────────┬────────────────────────────────────────────┘
+                            │ Dexie Table API                    │ fetch (Anthropic API)
+┌───────────────────────────┴───────────────────┐   ┌────────────┴──────────────┐
+│ db/db.ts — version(2).stores({...}).upgrade()  │   │ api.anthropic.com/v1/     │
+│  NEW: dailyCheckins, weightEntries             │   │ messages (BYOK, direct    │
+│  EVOLVED: foods (usage/dedupe/serving fields)  │   │ from browser, CORS)       │
+│  UNCHANGED (declared, orphaned): ptTemplates,  │   └────────────────────────────┘
+│  ptSessions, stepEntries, liftCheckins,        │
+│  mealEntries, goals                            │
+└─────────────────────────────────────────────────┘
 ```
 
-Dexie declaration:
-```
-ptTemplates: 'id, name, createdAt'
-```
+## Component Responsibilities
 
-Indexes: `name` (for library search/sort), `createdAt` (newest-first list).
+| Component | Responsibility | New / Modified |
+|-----------|----------------|-----------------|
+| `db/db.ts` `version(2)` block | Add `weightEntries`, `dailyCheckins`; evolve `foods` indexes; **append-only** — never touches `version(1)` block | Modified (additive) |
+| `db/schema.ts` | Add `WeightEntry`, `DailyCheckin` interfaces; extend `Food`; remove `PTTemplate`/`PTSession`/`StepEntry`/`LiftCheckin` **type exports** (stores stay physically declared — see Orphaned Data section) | Modified |
+| `services/checkins.svc.ts` | Upsert/read lift + cardio check-offs by `[dayKey, kind]`; replaces `lifts.svc.ts` | New (replaces) |
+| `services/weight.svc.ts` | CRUD for `weightEntries`; range query for Dashboard trend | New |
+| `services/parse.svc.ts` | Orchestrates AI vs local parsing; provider-agnostic; never touches Dexie directly (delegates food creation to `food.svc.ts`) | New |
+| `services/parseProviders/anthropic.provider.ts` | Anthropic Messages API call, forced tool-use JSON output, dynamic-imported SDK | New |
+| `services/parseProviders/local.provider.ts` | Regex/arithmetic fallback parser (no network, no bundled nutrition DB) | New |
+| `services/food.svc.ts` | Gains dedupe-by-`normalizedName`, `usageCount`/`lastUsedAt` bump on log, structured serving fields | Modified |
+| `services/closure.svc.ts` | Range aggregation across `mealEntries` + `dailyCheckins`; replaces `streak.svc.ts`; same Promise.all-range pattern | New (replaces) |
+| `services/export.svc.ts` | v2 envelope: new stores in, orphaned v1 stores decision applied, API key **never** included (it isn't in Dexie) | Modified |
+| `services/import.svc.ts` | Validates `schemaVersion === db.verno` (current version only — NOT a JSON-level v1→v2 migrator; that job belongs to the Dexie `upgrade()` callback, see Migration Paths) | New |
+| `lib/apiKeyStore.ts` | `localStorage`-backed getter/setter for the Anthropic API key | New |
 
----
-
-### `ptSessions`
-
-One record per logged PT session. A session references one template and records actuals.
-
-```typescript
-interface PTSession {
-  id: string;              // uuid
-  dayKey: string;          // 'YYYY-MM-DD' local date
-  templateId: string;      // FK → ptTemplates.id
-  templateName: string;    // denormalized — survives template rename/delete
-  actualSets: number;
-  actualReps: number;
-  actualDurationSecs?: number;
-  notes?: string;
-  loggedAt: number;        // Unix ms, for ordering within a day
-}
-```
-
-Dexie declaration:
-```
-ptSessions: 'id, dayKey, templateId, loggedAt'
-```
-
-Indexes: `dayKey` (primary query: "what PT did I do today?"), `templateId` (history for a template), `loggedAt` (ordering).
-
----
-
-### `foods`
-
-User-built food library. Written infrequently (add once, reuse many times).
-
-```typescript
-interface Food {
-  id: string;              // uuid
-  name: string;
-  brand?: string;
-  servingLabel: string;    // e.g. "1 cup", "100g"
-  caloriesPerServing: number;
-  proteinG: number;
-  carbsG: number;
-  fatG: number;
-  photoKey?: string;       // OPFS filename, e.g. "food-<uuid>.webp" — null if no photo
-  createdAt: number;
-}
-```
-
-Dexie declaration:
-```
-foods: 'id, name, createdAt'
-```
-
-Indexes: `name` (recall search — prefix match via `.where('name').startsWith(query)`), `createdAt` (newest-first default sort).
-
-Note: Do NOT index `photoKey`. It is looked up only when rendering a specific food detail — no filtering on it.
-
----
-
-### `mealEntries`
-
-One record per food-in-meal log event. Multiple entries can share a `dayKey`.
-
-```typescript
-interface MealEntry {
-  id: string;              // uuid
-  dayKey: string;          // 'YYYY-MM-DD'
-  foodId: string;          // FK → foods.id
-  foodName: string;        // denormalized snapshot
-  servings: number;
-  caloriesTotal: number;   // pre-computed: caloriesPerServing * servings
-  proteinGTotal: number;
-  carbsGTotal: number;
-  fatGTotal: number;
-  mealLabel?: string;      // 'breakfast' | 'lunch' | 'dinner' | 'snack' — optional
-  loggedAt: number;        // Unix ms
-}
-```
-
-Dexie declaration:
-```
-mealEntries: 'id, dayKey, foodId, loggedAt'
-```
-
-Indexes: `dayKey` (primary query: all meals for today), `foodId` (how often have I logged this food?), `loggedAt` (ordering within day).
-
-Denormalize macro totals into each entry. Summing for a day is then a simple reduce over an already-fetched array — no join needed.
-
----
-
-### `stepEntries`
-
-One record per calendar day. Keyed by `dayKey` directly (natural primary key — only one step count per day).
-
-```typescript
-interface StepEntry {
-  dayKey: string;          // 'YYYY-MM-DD' — IS the primary key
-  count: number;
-  updatedAt: number;       // Unix ms — for export ordering
-}
-```
-
-Dexie declaration:
-```
-stepEntries: 'dayKey'
-```
-
-No secondary indexes needed. Queries are always exact-match by `dayKey` or a range `between('2026-01-01', '2026-04-30')`.
-
----
-
-### `liftCheckins`
-
-One record per calendar day. Same natural-key pattern as stepEntries.
-
-```typescript
-interface LiftCheckin {
-  dayKey: string;          // 'YYYY-MM-DD' — IS the primary key
-  didLift: boolean;
-  note?: string;
-  updatedAt: number;       // Unix ms
-}
-```
-
-Dexie declaration:
-```
-liftCheckins: 'dayKey'
-```
-
-No secondary indexes needed. Boolean `didLift` is never queried as an index (IDB cannot index booleans efficiently, and full table scan over a year of data is < 400 records).
-
----
-
-### `goals`
-
-Single-record "table" — the user's current daily targets. Store as a single document with a well-known key.
-
-```typescript
-interface Goals {
-  id: 'singleton';         // literal string — only one record ever
-  caloriesTarget: number;
-  proteinGTarget: number;
-  carbsGTarget: number;
-  fatGTarget: number;
-  stepsTarget: number;
-  updatedAt: number;
-}
-```
-
-Dexie declaration:
-```
-goals: 'id'
-```
-
-No indexes. `db.goals.get('singleton')` is the only query.
-
----
-
-## Day Key Format Decision
-
-**Decision: Store all day keys as `'YYYY-MM-DD'` strings in the user's local time zone.**
-
-Rationale:
-
-- This app is single-user, single-device, single timezone. There is no server reconciling records across time zones.
-- All logging events ("log today's lunch", "did I complete my PT today?") are conceptually anchored to the user's local calendar day, not UTC.
-- Using `new Date().toISOString().split('T')[0]` produces a UTC date, which will produce the wrong day key for users west of UTC after 7pm local time. This is the single most common timezone bug in health trackers.
-- The correct approach: construct the key from local getters.
-
-```typescript
-// lib/dayKey.ts — single source of truth for day key construction
-
-export function todayKey(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-export function dateToKey(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-export function keyToDate(key: string): Date {
-  // Parse as local — NOT new Date(key) which parses as UTC midnight
-  const [y, m, d] = key.split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
-```
-
-`YYYY-MM-DD` strings sort lexicographically in the same order as chronologically. This means IDB range queries like `IDBKeyRange.bound('2026-01-01', '2026-04-30')` work correctly on `dayKey` primary keys without any index or date conversion.
-
-**Never use `new Date(isoString).toISOString().split('T')[0]`** for generating a day key — this produces UTC dates.
-
----
-
-## Component / Module Boundaries
-
-### Feature Slice Structure
-
-Each feature is a self-contained directory. Features do not import from each other's directories. All cross-cutting concerns go through shared services or the db layer.
+## Recommended Project Structure (delta from v1)
 
 ```
 src/
 ├── db/
-│   ├── db.ts                  # Single Dexie instance; all version() declarations
-│   ├── schema.ts              # TypeScript interfaces for all records
-│   └── migrations.ts          # Upgrade function implementations (imported by db.ts)
-│
+│   ├── db.ts                 # version(2) appended
+│   └── schema.ts             # + WeightEntry, DailyCheckin; Food extended
 ├── lib/
-│   ├── dayKey.ts              # todayKey(), dateToKey(), keyToDate()
-│   ├── photoStore.ts          # OPFS read/write helpers
-│   └── exportImport.ts        # JSON dump + restore logic
-│
+│   └── apiKeyStore.ts         # NEW — localStorage wrapper, mirrors storageKeys.ts pattern
 ├── services/
-│   ├── pt.svc.ts              # PT queries and mutations
-│   ├── food.svc.ts            # Food library CRUD
-│   ├── meals.svc.ts           # Meal log CRUD + daily macro aggregation
-│   ├── steps.svc.ts           # Step entry upsert + query
-│   ├── lifts.svc.ts           # Lift checkin upsert + query
-│   ├── goals.svc.ts           # Goals singleton get/set
-│   └── streak.svc.ts          # Derives 4-segment completion per day/range
-│
+│   ├── checkins.svc.ts        # NEW — replaces lifts.svc.ts
+│   ├── weight.svc.ts          # NEW
+│   ├── closure.svc.ts         # NEW — replaces streak.svc.ts
+│   ├── parse.svc.ts           # NEW — provider orchestrator
+│   ├── parseProviders/
+│   │   ├── anthropic.provider.ts
+│   │   └── local.provider.ts
+│   ├── food.svc.ts            # MODIFIED — dedupe + usage tracking
+│   ├── import.svc.ts          # NEW
+│   ├── export.svc.ts          # MODIFIED
+│   └── (pt.svc.ts, steps.svc.ts, lifts.svc.ts DELETED)
 ├── features/
-│   ├── pt/                    # PT template management + session logging UI
-│   │   ├── PTTemplateList.tsx
-│   │   ├── PTTemplateForm.tsx
-│   │   ├── PTSessionLog.tsx
-│   │   └── hooks.ts           # useLiveQuery wrappers for PT
-│   │
-│   ├── food/                  # Food library UI + meal log
-│   │   ├── FoodLibrary.tsx
-│   │   ├── FoodForm.tsx
-│   │   ├── MealLog.tsx
-│   │   ├── DailyMacroBar.tsx
-│   │   └── hooks.ts
-│   │
-│   ├── steps/
-│   │   ├── StepEntry.tsx
-│   │   └── hooks.ts
-│   │
-│   ├── lifts/
-│   │   ├── LiftCheckin.tsx
-│   │   └── hooks.ts
-│   │
-│   ├── calendar/              # Streak calendar — reads streak.svc.ts
-│   │   ├── StreakCalendar.tsx
-│   │   ├── DayCell.tsx        # 4-segment indicator component
-│   │   └── hooks.ts
-│   │
-│   └── settings/
-│       ├── GoalsForm.tsx
-│       ├── ExportImport.tsx
-│       └── hooks.ts
-│
-├── components/                # Pure, shared UI primitives
-│   ├── MacroBar.tsx
-│   ├── ProgressRing.tsx
-│   └── ...
-│
-├── sw.ts                      # Custom service worker (injectManifest strategy)
-├── App.tsx
-└── main.tsx
+│   ├── food/                  # MODIFIED — freeform entry, auto-library chips replace FoodCreateForm
+│   ├── checkins/              # NEW — replaces features/lifts (generalized lift+cardio tiles)
+│   ├── weight/                # NEW
+│   ├── closure/                # NEW — replaces features/calendar's DayCell quadrant model
+│   └── (features/pt/, features/steps/ DELETED)
+└── routes/
+    ├── DailyScreen.tsx         # replaces TodayScreen.tsx
+    ├── DashboardScreen.tsx     # replaces CalendarScreen.tsx
+    ├── DayDetailScreen.tsx     # kept — reused for tapping into a past day
+    └── SettingsScreen.tsx      # kept — gains API key field + import button
 ```
 
-### What Talks to What
+### Structure Rationale
 
-| Consumer | Allowed To Import | Not Allowed |
-|----------|------------------|-------------|
-| Feature component (`features/pt/`) | `services/pt.svc.ts`, `lib/*`, `components/*`, own `hooks.ts` | Other features' internals |
-| Feature `hooks.ts` | Its feature's `*.svc.ts` | `db.ts` directly |
-| `*.svc.ts` | `db.ts`, `lib/dayKey.ts` | React hooks, feature components |
-| `streak.svc.ts` | `db.ts` (all stores) | Feature components |
-| `export.svc.ts` | `db.ts` (all stores), `lib/photoStore.ts` | Feature components |
-| `db.ts` | `schema.ts`, `migrations.ts` | Anything outside `db/` |
+- **`parseProviders/` as its own folder, not flat files in `services/`:** the provider interface is the one place in this codebase where an external network dependency and a swappable-implementation pattern both apply — worth a dedicated boundary so `anthropic.provider.ts` (the only file that imports the Anthropic SDK) can be dynamically imported and code-split away from users who never touch AI parsing.
+- **`apiKeyStore.ts` lives in `lib/`, not `services/`:** every existing `*.svc.ts` talks to `db.ts` (Dexie). The API key deliberately does **not** go through Dexie (see API Key Storage section) — putting it in `lib/` alongside `storageKeys.ts`/`photoStore.ts` (both non-Dexie persistence helpers) keeps the "services = Dexie boundary" convention intact rather than creating a `*.svc.ts` file that's secretly not talking to the database.
+- **`features/checkins/` generalizes `features/lifts/`:** lift and cardio are now the same shape (`DailyCheckin` with a `kind` discriminator) — one feature folder with a `kind` prop on its tile component avoids duplicating `LiftToggle.tsx`/`LiftNoteInput.tsx` into near-identical cardio versions.
 
-This enforces a strict dependency direction: UI → services → db. No circular dependencies.
+## Dexie `version(2)` Migration Design
 
----
+### New stores
 
-## State Management Pattern
-
-**Recommendation: Dexie `liveQuery()` as the reactive layer. No separate global state store (no Zustand, Redux, Jotai).**
-
-Rationale: For a fully-local app where the database IS the source of truth, `liveQuery()` eliminates the need for a separate in-memory state layer. Components subscribe directly to queries; writes automatically invalidate and re-run relevant queries.
+**`weightEntries`** — one entry per day, natural key (same pattern as v1's `stepEntries`/`liftCheckins`):
 
 ```typescript
-// Example: DailyMacroBar using liveQuery
-import { useLiveQuery } from 'dexie-react-hooks';
-import { getMealEntriesForDay } from '@/services/meals.svc';
-import { todayKey } from '@/lib/dayKey';
-
-export function DailyMacroBar() {
-  const entries = useLiveQuery(
-    () => getMealEntriesForDay(todayKey()),
-    []
-  );
-
-  if (!entries) return <Skeleton />;
-
-  const totalCals = entries.reduce((sum, e) => sum + e.caloriesTotal, 0);
-  // ...
+interface WeightEntry {
+  dayKey: string;   // PK — natural key, one record per day, upsert
+  weightKg: number; // canonical unit; convert for display per user preference
+  loggedAt: number;
 }
 ```
+Store string: `'dayKey'`.
+
+**`dailyCheckins`** — generalizes lift + cardio (and any future check-off "kind") into one store instead of one store per activity type. This directly satisfies the "Hevy-sync-ready" requirement: a future sync job can `put()` a `source: 'hevy'` record for `kind: 'cardio'` without any schema change.
 
 ```typescript
-// meals.svc.ts
-import { db } from '@/db/db';
-
-export function getMealEntriesForDay(dayKey: string) {
-  return db.mealEntries.where('dayKey').equals(dayKey).toArray();
+interface DailyCheckin {
+  dayKey: string;               // compound PK part 1
+  kind: 'lift' | 'cardio';      // compound PK part 2 — extensible, don't hardcode to 2 kinds in queries
+  completed: boolean;
+  source: 'manual' | 'hevy';    // v2 ships 'manual' only; Hevy sync writes 'hevy' later
+  note?: string;
+  loggedAt: number;
 }
 ```
+Store string: `'[dayKey+kind], dayKey'`. The compound primary key `[dayKey+kind]` gives O(1) upsert (`db.dailyCheckins.put({dayKey, kind, ...})`) exactly like v1's `liftCheckins.dayKey` PK did. The **second, non-compound `dayKey` index is required** — without it, `closure.svc.ts`'s range query (`.where('dayKey').between(startKey, endKey)`, needed to fetch both kinds for a date range in one query, same shape as v1's `streak.svc.ts`) cannot be expressed; a compound key alone does not let you query on its first component independently. [Confidence: HIGH — Dexie compound-index syntax is core, well-documented behavior.]
 
-**Pattern for the streak calendar** (month range query):
+### Evolved store: `foods`
+
+Additive fields only (append-only applies to data shape too, not just store names — never repurpose or rename an existing field):
 
 ```typescript
-// streak.svc.ts
-export async function getStreakDataForRange(startKey: string, endKey: string) {
-  const [sessions, meals, steps, lifts] = await Promise.all([
-    db.ptSessions.where('dayKey').between(startKey, endKey, true, true).toArray(),
-    db.mealEntries.where('dayKey').between(startKey, endKey, true, true).toArray(),
-    db.stepEntries.where('dayKey').between(startKey, endKey, true, true).toArray(),
-    db.liftCheckins.where('dayKey').between(startKey, endKey, true, true).toArray(),
-  ]);
-  // Aggregate into Map<dayKey, {pt: boolean, food: boolean, steps: boolean, lifts: boolean}>
+interface Food {
+  // ...existing fields unchanged...
+  normalizedName: string;    // NEW — trim().toLowerCase(), indexed, dedupe key
+  usageCount: number;        // NEW — incremented on every logMeal() call
+  lastUsedAt: number;        // NEW — replaces the mealEntries-scan in getRecentFoods()
+  servingQty?: number;       // NEW — canonical structured serving (replaces freeform parsing of servingLabel)
+  servingUnit?: string;      // NEW — e.g. 'g', 'ml', 'oz', 'piece'
+  parseSource?: 'ai' | 'local' | 'manual'; // NEW — provenance badge in UI, audit trail
 }
 ```
+Store string: `'id, name, normalizedName, lastUsedAt, usageCount, createdAt'`.
 
-`liveQuery` wrapping this will re-run whenever any of the four tables changes — which is exactly the desired behavior.
+`servingLabel` (existing freeform string) is kept as-is for backward-compat display of pre-v2 records; new AI/local-parsed foods populate both `servingLabel` (display) and `servingQty`/`servingUnit` (structured, for future unit math). Old records simply have `servingQty`/`servingUnit` undefined — components must treat them as optional, not backfill-required.
 
-**Local UI state** (form values, modal open/close, search query strings) lives in `useState` / `useReducer` as normal React state. It never touches Dexie.
-
----
-
-## Schema Versioning Strategy
-
-**Start at version 1. Increment the version number for every schema change. Never mutate a past version declaration.**
+### The `upgrade()` callback — what it does and does not do
 
 ```typescript
-// db/db.ts
-import Dexie, { type Table } from 'dexie';
-import type { PTTemplate, PTSession, Food, MealEntry, StepEntry, LiftCheckin, Goals } from './schema';
+this.version(2)
+  .stores({
+    foods: 'id, name, normalizedName, lastUsedAt, usageCount, createdAt',
+    dailyCheckins: '[dayKey+kind], dayKey',
+    weightEntries: 'dayKey',
+    // ptTemplates, ptSessions, stepEntries, liftCheckins, mealEntries, goals:
+    // OMITTED — Dexie carries stores not mentioned in a later version forward unchanged.
+  })
+  .upgrade(async (tx) => {
+    // 1. Migrate real user data: liftCheckins → dailyCheckins (kind: 'lift').
+    //    This is a genuine data-continuity migration (not a drop) because lift
+    //    check-off history feeds the v2 closure/streak count and Dashboard.
+    const lifts = await tx.table('liftCheckins').toArray();
+    for (const l of lifts) {
+      await tx.table('dailyCheckins').put({
+        dayKey: l.dayKey, kind: 'lift', completed: l.lifted,
+        source: 'manual', note: l.note, loggedAt: l.loggedAt,
+      });
+    }
 
-export class HealthTrackerDB extends Dexie {
-  ptTemplates!: Table<PTTemplate, string>;
-  ptSessions!: Table<PTSession, string>;
-  foods!: Table<Food, string>;
-  mealEntries!: Table<MealEntry, string>;
-  stepEntries!: Table<StepEntry, string>;
-  liftCheckins!: Table<LiftCheckin, string>;
-  goals!: Table<Goals, string>;
-
-  constructor() {
-    super('HealthTrackerDB');
-
-    // Version 1 — initial schema
-    this.version(1).stores({
-      ptTemplates:  'id, name, createdAt',
-      ptSessions:   'id, dayKey, templateId, loggedAt',
-      foods:        'id, name, createdAt',
-      mealEntries:  'id, dayKey, foodId, loggedAt',
-      stepEntries:  'dayKey',
-      liftCheckins: 'dayKey',
-      goals:        'id',
-    });
-
-    // Future versions follow:
-    // this.version(2).stores({ ... }).upgrade(tx => { ... });
-  }
-}
-
-export const db = new HealthTrackerDB();
+    // 2. Backfill foods.usageCount / lastUsedAt / normalizedName from existing
+    //    mealEntries history, so the auto-library doesn't show "0 uses" for
+    //    foods the user actually logs constantly in v1.
+    const meals = await tx.table('mealEntries').toArray();
+    const counts = new Map<string, number>();
+    const lastUsed = new Map<string, number>();
+    for (const m of meals) {
+      counts.set(m.foodId, (counts.get(m.foodId) ?? 0) + 1);
+      lastUsed.set(m.foodId, Math.max(lastUsed.get(m.foodId) ?? 0, m.loggedAt));
+    }
+    const foods = await tx.table('foods').toArray();
+    for (const f of foods) {
+      await tx.table('foods').put({
+        ...f,
+        normalizedName: f.name.trim().toLowerCase(),
+        usageCount: counts.get(f.id) ?? 0,
+        lastUsedAt: lastUsed.get(f.id) ?? f.createdAt,
+      });
+    }
+    // Deliberately does NOT touch ptTemplates, ptSessions, stepEntries — see
+    // "Orphaned v1 Data" below. Deliberately does NOT delete liftCheckins —
+    // left in place for one release as a rollback source.
+  });
 ```
 
-**Rules for future migrations:**
+**Pitfall #1 applies inside `upgrade()` just as much as inside `db.transaction()`** — every `await` above is a `tx.table(...)` Dexie call. The moment anyone adds a `fetch()` or `setTimeout` inside this callback (e.g. "let's call the AI to re-categorize old foods during migration" — don't), the versionchange transaction silently auto-commits and drops the rest of the migration. This is the single highest-stakes place in the whole v2 migration to violate that rule, because it runs once, unattended, on the user's real historical data.
 
-1. Add a new `this.version(N)` block. Only specify the stores that changed (Dexie merges unchanged stores automatically in v3+).
-2. If data transformation is needed (rename a field, split a column), attach `.upgrade(tx => ...)`.
-3. If only an index is added (no data change), no `.upgrade()` is needed.
-4. Never delete a version block that has shipped. Removing a version number breaks upgrade paths for users on older data.
+### Orphaned v1 Data — decision options
 
-**Export format also carries a `schemaVersion`** (see Export/Import section) so that import-time validation can detect when a backup file was created against an older schema.
+**`ptTemplates`, `ptSessions`, `stepEntries`** have no v2 equivalent at all (features fully dropped, not renamed/generalized).
 
----
+| Option | What it does | Risk | Recommendation |
+|--------|--------------|------|-----------------|
+| **A. Leave declared, do nothing** | Omit from `version(2).stores()`; Dexie carries the stores forward unchanged; old rows remain in IndexedDB, inert, never read or written by v2 code | None | **Recommended for the v2 milestone.** Zero migration risk, zero code needed. Data size is trivial (a rehab tracker + step counts for a few months = tens of KB). |
+| **B. Clear rows, keep store shell** | Add `await tx.table('ptTemplates').clear()` (etc.) inside the `version(2).upgrade()` — plain `tx.table` calls, no interaction with the Dexie deletion bug | Low | Optional, for privacy/hygiene, if either user wants the PT rehab history gone. Not required. |
+| **C. Drop the object stores** | `ptTemplates: null, ptSessions: null, stepEntries: null` in a **later, isolated** `version(3).stores({...})` with no other changes and no `.upgrade()` in that same version | Medium — Dexie has a documented bug where store deletion (`null`) combined with other structural changes or an `upgrade()` function in the *same* version can leave stores undeleted or behave unpredictably ([dexie/Dexie.js#889](https://github.com/dfahlander/Dexie.js/issues/889), [#276](https://github.com/dexie/Dexie.js/issues/276)) | Do this only as a **future, separate cleanup release**, never bundled with the v2 feature migration. |
 
-## Photo / Blob Storage
+Corresponding TypeScript cleanup (safe, does not touch the immutable `version(1)` block): delete the `PTTemplate`/`PTSession`/`StepEntry` interfaces from `schema.ts` and the `ptTemplates!`/`ptSessions!`/`stepEntries!` properties from the `HealthTrackerDB` class, and delete `pt.svc.ts`, `steps.svc.ts`, `features/pt/`, `features/steps/`. This only removes the TypeScript *accessor* layer — the physical object stores keep existing in IndexedDB per Option A, satisfying "declared but orphaned" exactly as posed in the question.
 
-**Decision: Store food photos in OPFS (Origin Private File System), not as Blobs embedded in IndexedDB.**
+**`liftCheckins`** is different — it is migrated (data continuity), not orphaned. Keep the `LiftCheckin` interface + `liftCheckins!` property declared for at least this release (useful if a rollback or a manual data-recovery script is ever needed), delete `lifts.svc.ts` and stop writing to the store from the UI. Drop the accessor in a later cleanup release once `dailyCheckins` has been in production for both users for a while.
 
-### Why Not Blob-in-IDB
+## AI Parse Service Boundary
 
-- IDB is optimized for structured data. Large blobs stored directly in IDB can cause serialization overhead and inflate the IDB store size, degrading query performance for surrounding records.
-- Dexie's own documentation explicitly warns: "Never index properties containing images, movies or large (huge) strings."
-- Reading a Blob from IDB requires a full record deserialize even when only the structured fields are needed.
-
-### Why OPFS
-
-- OPFS is purpose-built for file storage. Browser support is universal across modern browsers (Chrome, Firefox, Safari, Edge since early 2023).
-- OPFS files are part of origin storage quota — same quota bucket as IDB, so no quota advantage. But the API is optimized for binary I/O.
-- OPFS files are NOT visible to users (origin-private). They are not in the user's Downloads or photo library.
-- Performance: OPFS synchronous access (via `createSyncAccessHandle`) is up to 2x faster than IndexedDB for binary writes.
-- For an installed PWA on iOS/Android, the seven-day eviction policy that Safari applies to non-installed origin storage does NOT apply — installed PWAs get persistent quota treatment.
-
-### Photo Storage Implementation
+### Provider interface
 
 ```typescript
-// lib/photoStore.ts
-
-const PHOTO_DIR = 'food-photos';
-
-async function getDir(): Promise<FileSystemDirectoryHandle> {
-  const root = await navigator.storage.getDirectory();
-  return root.getDirectoryHandle(PHOTO_DIR, { create: true });
+// services/parseProviders/types.ts
+export interface ParsedFoodItem {
+  name: string;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  servingQty: number;
+  servingUnit: string;
 }
 
-export async function savePhoto(file: File): Promise<string> {
-  const key = `food-${crypto.randomUUID()}.webp`;
-  const dir = await getDir();
-  const fh = await dir.getFileHandle(key, { create: true });
-  const writable = await fh.createWritable();
-  // Optionally resize/compress before write
-  await writable.write(file);
-  await writable.close();
-  return key; // stored as foods.photoKey
-}
-
-export async function getPhotoUrl(key: string): Promise<string> {
-  const dir = await getDir();
-  const fh = await dir.getFileHandle(key);
-  const file = await fh.getFile();
-  return URL.createObjectURL(file); // caller must revoke
-}
-
-export async function deletePhoto(key: string): Promise<void> {
-  const dir = await getDir();
-  await dir.removeEntry(key);
+export interface ParseProvider {
+  id: 'anthropic' | 'local';
+  parse(freeformText: string): Promise<ParsedFoodItem[]>; // array: "eggs and toast" → 2 items
 }
 ```
 
-The `foods.photoKey` field holds only the OPFS filename. Object URLs are created on demand and revoked after use. Photos are included in JSON export as base64 data URIs so backups are self-contained.
-
----
-
-## Export / Import JSON Format
-
-**All data exports to a single JSON file. Format is versioned from day 1.**
-
-### Export Envelope
+### Orchestration (`parse.svc.ts`)
 
 ```typescript
-interface ExportEnvelope {
-  schemaVersion: number;      // IDB schema version at export time (db.verno)
-  exportedAt: string;         // ISO 8601 UTC timestamp
-  appVersion: string;         // semver string from package.json (import.meta.env.VITE_APP_VERSION)
-  data: {
-    ptTemplates: PTTemplate[];
-    ptSessions: PTSession[];
-    foods: Food[];
-    mealEntries: MealEntry[];
-    stepEntries: StepEntry[];
-    liftCheckins: LiftCheckin[];
-    goals: Goals[];
-  };
-  photos: Record<string, string>; // { [photoKey]: 'data:image/webp;base64,...' }
-}
-```
-
-Example envelope header:
-```json
-{
-  "schemaVersion": 1,
-  "exportedAt": "2026-04-19T14:30:00.000Z",
-  "appVersion": "1.0.0",
-  "data": { ... },
-  "photos": { "food-abc123.webp": "data:image/webp;base64,..." }
-}
-```
-
-### Export Procedure
-
-```typescript
-// lib/exportImport.ts
-export async function exportAll(): Promise<string> {
-  const [ptTemplates, ptSessions, foods, mealEntries, stepEntries, liftCheckins, goals] =
-    await Promise.all([
-      db.ptTemplates.toArray(),
-      db.ptSessions.toArray(),
-      db.foods.toArray(),
-      db.mealEntries.toArray(),
-      db.stepEntries.toArray(),
-      db.liftCheckins.toArray(),
-      db.goals.toArray(),
-    ]);
-
-  const photos: Record<string, string> = {};
-  for (const food of foods) {
-    if (food.photoKey) {
-      const url = await getPhotoUrl(food.photoKey);
-      const resp = await fetch(url);
-      const blob = await resp.blob();
-      photos[food.photoKey] = await blobToBase64(blob);
-      URL.revokeObjectURL(url);
+export async function parseFoodEntry(text: string): Promise<{ items: ParsedFoodItem[]; usedFallback: boolean }> {
+  const key = getApiKey(); // lib/apiKeyStore.ts — localStorage read, sync
+  if (key) {
+    try {
+      const { anthropicParse } = await import('./parseProviders/anthropic.provider');
+      return { items: await anthropicParse(text, key), usedFallback: false };
+    } catch (err) {
+      console.warn('[parse.svc] anthropic provider failed, falling back to local', err);
+      // fall through — offline, bad key, rate limit, network error all land here
     }
   }
+  const { localParse } = await import('./parseProviders/local.provider');
+  return { items: await localParse(text), usedFallback: true };
+}
+```
 
-  const envelope: ExportEnvelope = {
-    schemaVersion: db.verno,
-    exportedAt: new Date().toISOString(),
-    appVersion: import.meta.env.VITE_APP_VERSION,
-    data: { ptTemplates, ptSessions, foods, mealEntries, stepEntries, liftCheckins, goals },
-    photos,
+`parse.svc.ts` never touches Dexie. Callers (the food-entry feature) take the returned `ParsedFoodItem[]` and pass each item to `food.svc.ts`'s new dedupe-aware create function — keeping the "parsing" concern and the "persistence/dedupe" concern in separate services, matching the existing `food.svc.ts` / `meals.svc.ts` split (library vs. logging).
+
+### Anthropic provider
+
+- **Model:** `claude-haiku-4-5` — current, generally available as of this research date (launched Oct 2025, EOL no sooner than Oct 2026 per Anthropic/AWS docs). [Confidence: MEDIUM — verify exact model slug against Anthropic's docs at implementation time, since model names iterate.]
+- **Browser-direct call:** Anthropic's API supports CORS for browser calls via the `anthropic-dangerous-direct-browser-access: true` request header (announced 2024, still the supported BYOK pattern in 2026). Using the official `@anthropic-ai/sdk`, this is `new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true })`. [Confidence: HIGH — corroborated by Anthropic's own CORS announcement and the SDK's `dangerouslyAllowBrowser` option existing for exactly this "bring your own key" client-side use case.]
+- **Structured output:** force a single tool call (`tool_choice: { type: 'tool', name: 'log_food' }`) with a JSON-schema tool definition matching `ParsedFoodItem[]`, rather than parsing prose — the standard, reliable pattern for getting strict JSON back from Claude.
+- **Bundle impact:** dynamically `import()`ed only inside the `if (key)` branch above, so the SDK never loads for a user who hasn't set an API key or is offline — keeps it out of the main bundle per the existing performance discipline (see STACK.md/PITFALLS.md precedent of code-splitting non-critical paths).
+- **Alternative considered:** raw `fetch()` to `https://api.anthropic.com/v1/messages` with the header set manually, skipping the SDK dependency entirely. Lighter, but loses the SDK's typed request/response and retry handling. Recommend the SDK (dynamically imported) unless bundle-size measurement later shows it matters.
+
+### Local fallback provider
+
+No bundled nutrition database (this would recreate the "third-party nutrition DB" anti-feature explicitly ruled out in `PROJECT.md`/`HEALTHTRACKER-CONTEXT.md`). The local provider is a **calculator, not a database**: a regex/keyword parser that recognizes the pattern from the requirement's own example — `"200g chicken, 31g protein per 100g"` — extracts quantity + unit + per-unit macro hints already present in the user's own text, and does the arithmetic. If the text contains no parseable macro hints (e.g. "a bowl of cereal" with no numbers), it returns a single low-confidence item with all macros zeroed and `name` set to the raw text, and the calling UI opens the existing manual-entry form pre-filled with that name for the user to fill in by hand. This keeps the offline path honest (never guesses) rather than silently fabricating macros.
+
+## API Key Storage: `localStorage`, not Dexie
+
+**Recommendation: `localStorage`, via a new `lib/apiKeyStore.ts`, following the existing `storageKeys.ts` convention — not a Dexie `settings`/`goals` field.**
+
+Reasoning specific to this project (not a general ecosystem fact — this is an architecture decision, not something to verify against docs):
+
+1. **Export/import safety by construction.** `export.svc.ts` and the new `import.svc.ts` only ever touch Dexie tables (confirmed by reading the current `exportAll()` — it enumerates `db.*` tables plus OPFS photos, nothing else). If the API key lived in Dexie, every future change to `export.svc.ts` would need an explicit exclusion to avoid leaking the key into a JSON file the user might screenshot, email to themselves, or hand to the other friend for comparison. Putting the key in `localStorage` means it is *structurally* excluded from the backup envelope — there is no filter to remember or forget.
+2. **Equivalent durability.** `navigator.storage.persist()` (already called at every startup per `main.tsx`) is an origin-level grant under the Storage Standard — it protects `localStorage` exactly as it protects IndexedDB on the browsers this PWA targets. There is no durability advantage to Dexie here.
+3. **No reactivity need.** The API key is read once when `parse.svc.ts` needs it and edited on a single Settings form; it doesn't need `useLiveQuery`'s cross-component reactivity the way `goals` does (goals feed progress bars in multiple places simultaneously).
+4. **Consistency with existing non-Dexie persistence.** `lib/storageKeys.ts` already centralizes `localStorage` keys (`lastOpenedAt`, `installDismissedAt`, etc.) for exactly this kind of "app-level setting, not user data" concern. `apiKeyStore.ts` extends that existing pattern rather than introducing a new one.
+
+```typescript
+// lib/apiKeyStore.ts
+const API_KEY_STORAGE_KEY = 'healthtracker:anthropicApiKey';
+export function getApiKey(): string | null { return localStorage.getItem(API_KEY_STORAGE_KEY); }
+export function setApiKey(key: string): void { localStorage.setItem(API_KEY_STORAGE_KEY, key); }
+export function clearApiKey(): void { localStorage.removeItem(API_KEY_STORAGE_KEY); }
+```
+
+## Closure Computation Service (replaces `streak.svc.ts`)
+
+`closure.svc.ts` follows the exact same range-aggregation pattern as v1's `streak.svc.ts` (one `Promise.all` per visible range, never per-cell queries — the existing Anti-Pattern 3 guard in the codebase comments applies unchanged), just against fewer, different stores:
+
+```typescript
+export interface ClosureState { food: boolean; lift: boolean; cardio: boolean; }
+
+export async function getClosureDataForRange(startKey: string, endKey: string): Promise<Map<string, ClosureState>> {
+  const [meals, checkins] = await Promise.all([
+    db.mealEntries.where('dayKey').between(startKey, endKey, true, true).toArray(),
+    db.dailyCheckins.where('dayKey').between(startKey, endKey, true, true).toArray(),
+  ]);
+  // meals → food: true for any dayKey present (or "hit target" — SEE OPEN DECISION below)
+  // checkins → lift/cardio: true where kind matches and completed === true
+}
+```
+
+The consecutive-streak-count algorithm (`getCurrentStreakCount`'s anchor/backward-scan logic in the current `streak.svc.ts`) is directly reusable — it's already store-agnostic once you swap `isComplete`'s definition from 4-flag to 3-flag AND.
+
+**Open decision, carried forward from v1 and not yet resolvable by research alone:** whether `food: true` means "any meal logged" (matches v1's `STREAK-02` semantics and the general "low-friction" bias) or "hit calorie/macro target within some tolerance" (closer to the literal PROJECT.md wording "calories/macros are logged" could be read either way, and an Apple-ring metaphor implies filling toward a target, not just any log). This needs an explicit design lock before `closure.svc.ts` is implemented, exactly as the equivalent v1 "Segment completion definition" decision was locked before Phase 3 — do not infer silently in code.
+
+## Route / IA Changes
+
+```typescript
+<HashRouter>
+  <AppShell>
+    <Routes>
+      <Route path="/" element={<Navigate to="/daily" replace />} />
+      <Route path="/daily" element={<DailyScreen />} />        {/* was /today */}
+      <Route path="/dashboard" element={<DashboardScreen />} /> {/* was /calendar */}
+      <Route path="/day/:dayKey" element={<DayDetailScreen />} /> {/* unchanged path */}
+      <Route path="/settings" element={<SettingsScreen />} />
+    </Routes>
+  </AppShell>
+</HashRouter>
+```
+
+- `DailyScreen` = today's closure state (ring/segment indicator) + all v2 logging entry points (food freeform box + auto-library chips, lift/cardio tiles, weight input).
+- `DashboardScreen` = Recharts weight trend line + eating-adherence and lift/cardio-consistency visualizations over weeks/months. It may still embed a compact closure history strip (heatmap-style, reusing the `closure.svc.ts` range query) as one panel among several — that's a UI-design decision, not an architecture one; the important structural point is Dashboard is chart/trend-first, not calendar-first, unlike v1's `/calendar`.
+- `/day/:dayKey` is retained unchanged as the drill-down for editing a past day, reusing the same leaf feature components `DailyScreen` uses (the existing `DayDetail*` components already establish this reuse pattern in v1 — no new pattern needed).
+- HashRouter itself is unchanged; no reason to revisit that v1 decision for v2.
+
+## Export / Import v2 Envelope
+
+```typescript
+interface ExportEnvelopeV2 {
+  schemaVersion: number;   // db.verno === 2
+  exportedAt: string;
+  appVersion: string;
+  data: {
+    foods: Food[];             // v2 shape (usageCount, lastUsedAt, normalizedName, ...)
+    mealEntries: MealEntry[];
+    dailyCheckins: DailyCheckin[];
+    weightEntries: WeightEntry[];
+    goals: Goals[];
+    // ptTemplates / ptSessions / stepEntries / liftCheckins: OMITTED —
+    // dead per the Orphaned Data decision; nothing to back up going forward.
   };
-
-  return JSON.stringify(envelope, null, 2);
+  photos: Record<string, string>;
 }
 ```
 
-### Import / Restore Procedure
+The Anthropic API key is never part of this envelope — it lives in `localStorage`, which `export.svc.ts` never reads (see API Key Storage section). This is enforced structurally, not by a filter someone has to remember to add.
 
-Import is destructive-replace (not merge). The user confirms before wiping existing data.
+### Two separate migration paths — do not conflate them
 
-```typescript
-export async function importAll(json: string): Promise<void> {
-  const envelope: ExportEnvelope = JSON.parse(json);
+1. **In-place Dexie schema upgrade** (`db.version(2).upgrade()`): handles converting each user's **existing local IndexedDB** from v1 shape to v2 shape, automatically, the first time they open the upgraded app. This is where `liftCheckins → dailyCheckins` conversion and `foods` usage-count backfill belong (see Migration Design above). Every existing local install gets this for free the moment the new code loads — no user action, no JSON file involved.
+2. **JSON export/import** (`export.svc.ts` / new `import.svc.ts`): a manual backup/restore mechanism for **disaster recovery** (device lost, browser data cleared, moving to a new phone), not a schema-migration tool. `import.svc.ts` should validate `envelope.schemaVersion === db.verno` and **reject** anything else with a clear message ("this backup is from an older/newer version of the app") rather than attempting a JSON-level v1→v2 transform — that transform already happened, once, correctly, inside the Dexie `upgrade()` callback for whoever had local v1 data. Building a second, parallel migration path inside `import.svc.ts` would duplicate the `upgrade()` logic and risk the two diverging.
 
-  if (typeof envelope.schemaVersion !== 'number') {
-    throw new Error('Invalid export file: missing schemaVersion');
-  }
-  if (envelope.schemaVersion > db.verno) {
-    throw new Error(
-      `Export was created with a newer app version (schema ${envelope.schemaVersion}). ` +
-      `Update the app before importing.`
-    );
-  }
+## Suggested Build Order
 
-  await db.transaction('rw', db.tables, async () => {
-    await Promise.all(db.tables.map(t => t.clear()));
-    await db.ptTemplates.bulkPut(envelope.data.ptTemplates);
-    await db.ptSessions.bulkPut(envelope.data.ptSessions);
-    await db.foods.bulkPut(envelope.data.foods);
-    await db.mealEntries.bulkPut(envelope.data.mealEntries);
-    await db.stepEntries.bulkPut(envelope.data.stepEntries);
-    await db.liftCheckins.bulkPut(envelope.data.liftCheckins);
-    await db.goals.bulkPut(envelope.data.goals);
-  });
+1. **Dexie v2 schema + migration** (`db/db.ts`, `db/schema.ts`) — everything else depends on the new stores/fields existing. Includes the `liftCheckins → dailyCheckins` and `foods` usage-count backfill in `upgrade()`. Delete `pt.svc.ts`/`steps.svc.ts`/`lifts.svc.ts` and their feature folders here, per the Orphaned Data decision (Option A).
+2. **Check-offs + weight** (`checkins.svc.ts`, `weight.svc.ts` + minimal UI tiles) — straightforward CRUD against the new stores, no AI dependency, lowest risk, validates the schema from step 1 end-to-end.
+3. **AI parsing + auto-library** (`parse.svc.ts`, both providers, `food.svc.ts` dedupe/usage logic, `apiKeyStore.ts`, freeform entry UI) — the highest-uncertainty piece (external API, structured-output reliability, offline fallback UX); build once the data layer underneath it (step 1) is stable so parsed items have somewhere correct to land.
+4. **Closure loop + Dashboard IA** (`closure.svc.ts`, ring UI, `/daily` + `/dashboard` routes, Recharts trend/adherence views) — depends on steps 2 and 3 producing real `mealEntries`/`dailyCheckins`/`weightEntries` data to visualize meaningfully; also where the open "food closure semantics" decision must be locked before implementation.
+5. **Export/import v2 + final cleanup** (`export.svc.ts` v2 envelope, new `import.svc.ts`, Settings screen wiring) — last, because it needs the final shape of every store from steps 1–4 to be correct before it's worth versioning the backup format.
 
-  // Restore photos to OPFS
-  for (const [key, dataUri] of Object.entries(envelope.photos)) {
-    const blob = await dataUriToBlob(dataUri);
-    await savePhotoBlob(blob, key); // variant that accepts a specific key
-  }
-}
-```
+## Anti-Patterns to Avoid
 
----
+### Anti-Pattern: Bundling store deletion with the feature migration
+Dropping `ptTemplates`/`ptSessions`/`stepEntries` (`: null`) in the *same* `version(2).stores()` call that also adds `dailyCheckins`/`weightEntries` and runs an `upgrade()` function. Dexie has documented, reproducible bugs where store deletion interacts unpredictably with other structural changes in the same version. Do deletions (if ever) in their own later, isolated version bump with nothing else in it.
 
-## Service Worker / Offline Strategy
+### Anti-Pattern: A non-Dexie await inside `version(2).upgrade()`
+Same failure mode as the general Pitfall #1, but higher-stakes here because it runs once, unattended, against real historical data with no user-visible error if it silently truncates. Every `await` inside the `upgrade()` callback must be a `tx.table(...)` call — never `fetch`, never a provider call, never an OPFS read.
 
-**Tool: vite-plugin-pwa with `injectManifest` strategy (custom service worker file).**
+### Anti-Pattern: Letting `import.svc.ts` do double duty as a schema migrator
+Treating "restore an old backup file" and "upgrade v1 IndexedDB data to v2 shape" as the same code path. They are different triggers (file upload vs. app boot) with different risk profiles; conflating them means the `upgrade()` migration logic effectively has to be written and tested twice.
 
-### Why `injectManifest` Over `generateSW`
-
-`generateSW` auto-generates the service worker but gives no control over runtime caching rules. `injectManifest` lets you write `sw.ts` directly while still auto-injecting the Vite-hashed precache manifest via `self.__WB_MANIFEST`.
-
-### Caching Strategies
-
-| Resource Type | Strategy | Rationale |
-|--------------|----------|-----------|
-| App shell (HTML, JS, CSS, icons, fonts bundled) | Precache + CacheFirst | Always offline. Build hash ensures freshness. |
-| Web manifest (`manifest.webmanifest`) | Precache | Required for installability. |
-| User photos from OPFS | Not cached by SW — served via `createObjectURL` in-process | OPFS files are accessed directly in the main thread; SW does not intercept them. |
-| Google Fonts / external CDN (if used) | StaleWhileRevalidate | Show cached, update in background. |
-
-### Service Worker File (`src/sw.ts`)
-
-```typescript
-import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching';
-import { registerRoute, NavigationRoute, createHandlerBoundToURL } from 'workbox-routing';
-import { StaleWhileRevalidate } from 'workbox-strategies';
-
-// Injected by vite-plugin-pwa at build time
-declare let self: ServiceWorkerGlobalScope;
-precacheAndRoute(self.__WB_MANIFEST);
-cleanupOutdatedCaches();
-
-// SPA navigation fallback — serve index.html for all nav requests
-const handler = createHandlerBoundToURL('/index.html');
-const navRoute = new NavigationRoute(handler);
-registerRoute(navRoute);
-
-// Optional: cache any external fonts
-registerRoute(
-  ({ url }) => url.hostname === 'fonts.gstatic.com',
-  new StaleWhileRevalidate({ cacheName: 'google-fonts-webfonts' })
-);
-```
-
-### vite.config.ts (relevant section)
-
-```typescript
-VitePWA({
-  strategies: 'injectManifest',
-  srcDir: 'src',
-  filename: 'sw.ts',
-  registerType: 'autoUpdate',
-  manifest: {
-    name: 'HealthTracker',
-    short_name: 'HealthTracker',
-    theme_color: '#0a0a0a',
-    background_color: '#0a0a0a',
-    display: 'standalone',
-    icons: [
-      { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
-      { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-    ],
-  },
-})
-```
-
-`registerType: 'autoUpdate'` means new service workers activate immediately after a page reload (suitable for a solo personal app where update-conflicts are not a concern).
-
----
-
-## Architectural Patterns
-
-### Pattern 1: Service-Layer Encapsulation of Dexie Queries
-
-**What:** All Dexie queries live in `services/*.svc.ts`. Feature components never call `db.table.where(...)` directly.
-
-**When to use:** Always — this is the foundational rule.
-
-**Why:** Keeps query logic testable in isolation. When a query needs to change (e.g., add a filter), there is exactly one place to update it. Components remain decoupled from the database schema.
-
-```typescript
-// GOOD — in meals.svc.ts
-export const getDailyMacros = (dayKey: string) =>
-  db.mealEntries.where('dayKey').equals(dayKey).toArray();
-
-// GOOD — in component
-const entries = useLiveQuery(() => getDailyMacros(todayKey()), []);
-
-// BAD — in component
-const entries = useLiveQuery(() => db.mealEntries.where('dayKey').equals(todayKey()).toArray(), []);
-```
-
-### Pattern 2: Denormalize Computed Totals into Log Entries
-
-**What:** Store pre-computed totals (`caloriesTotal`, `proteinGTotal`, etc.) in `mealEntries` at write time, derived from the food record and serving count.
-
-**When to use:** Any time an aggregate is frequently read and the source data is immutable at read time.
-
-**Why:** Avoids runtime joins. "Daily macro total" is a reduce over the day's entries — no need to fetch every referenced `Food` record. Survives food library edits (the log is a historical snapshot, not a live view).
-
-### Pattern 3: Natural Key for Single-Per-Day Stores
-
-**What:** Use `dayKey` as the primary key for `stepEntries` and `liftCheckins`.
-
-**Why:** These stores hold at most one record per day by definition. A UUID primary key would add complexity with no benefit. `db.stepEntries.put({ dayKey: '2026-04-19', count: 8500 })` is an upsert — it creates or replaces the entry for that day.
-
----
-
-## Anti-Patterns
-
-### Anti-Pattern 1: Using UTC Date Strings as Day Keys
-
-**What people do:** `new Date().toISOString().split('T')[0]` to get today's date.
-
-**Why it's wrong:** This returns the UTC date. After 7pm for a UTC-5 user (midnight UTC), "today" in UTC is tomorrow in local time. A user logging their midnight snack gets it attributed to the wrong day.
-
-**Do this instead:** Use `lib/dayKey.ts:todayKey()` which uses local date getters (`getFullYear()`, `getMonth()`, `getDate()`).
-
-### Anti-Pattern 2: Storing Blobs Inline in IDB Records
-
-**What people do:** `{ ...foodRecord, photoBlob: <ArrayBuffer> }` directly in the `foods` store.
-
-**Why it's wrong:** Inflates IDB store size. Every query that fetches a food record deserializes the entire blob even if only the name and macros are needed. IDB is not optimized for this access pattern.
-
-**Do this instead:** Store only `photoKey: string` in the food record. Retrieve the blob from OPFS via `getPhotoUrl(food.photoKey)` only when rendering the food detail view.
-
-### Anti-Pattern 3: Deriving Streak State in Every Component
-
-**What people do:** Each calendar cell independently queries ptSessions, mealEntries, stepEntries, liftCheckins, and derives its completion state.
-
-**Why it's wrong:** N calendar cells × 4 async queries = 4N parallel IDB reads per render. For a 30-day month view, that is 120 queries.
-
-**Do this instead:** `streak.svc.ts` issues 4 range queries for the full visible date range and returns a keyed map. The `liveQuery` wrapping it fires once and computes all cells from the in-memory result.
-
-### Anti-Pattern 4: One Dexie Instance Per Feature
-
-**What people do:** Create separate `new Dexie('PTDatabase')`, `new Dexie('FoodDatabase')`, etc.
-
-**Why it's wrong:** Cross-store transactions (e.g., import/restore) become impossible. IDB transactions cannot span databases. The streak query needs to read 4 stores atomically.
-
-**Do this instead:** Single `HealthTrackerDB` instance in `db/db.ts`, all stores declared together.
-
----
-
-## Build Order (Module Dependencies)
-
-The natural dependency graph determines implementation order:
-
-```
-Phase 1 — Foundation (no dependencies)
-  db/db.ts + schema.ts          ← everything depends on this
-  lib/dayKey.ts                 ← everything depends on this
-  lib/photoStore.ts             ← foods depends on this
-
-Phase 2 — Foundational feature modules (depend only on db)
-  services/goals.svc.ts         ← standalone, no cross-store reads
-  features/settings/GoalsForm   ← depends on goals.svc.ts
-  services/food.svc.ts          ← standalone food library
-  features/food/FoodLibrary     ← depends on food.svc.ts + photoStore
-
-Phase 3 — Daily tracking (depend on foods)
-  services/meals.svc.ts         ← references foods store
-  features/food/MealLog         ← depends on meals.svc.ts
-  services/steps.svc.ts         ← standalone
-  features/steps/StepEntry      ← depends on steps.svc.ts
-  services/lifts.svc.ts         ← standalone
-  features/lifts/LiftCheckin    ← depends on lifts.svc.ts
-
-Phase 4 — PT (self-contained but separate domain)
-  services/pt.svc.ts
-  features/pt/*
-
-Phase 5 — Calendar / Streak (depends on all 4 daily tracking stores)
-  services/streak.svc.ts        ← reads ptSessions, mealEntries, stepEntries, liftCheckins
-  features/calendar/*
-
-Phase 6 — Export / Import (depends on all stores + photoStore)
-  lib/exportImport.ts
-  features/settings/ExportImport
-
-Phase 7 — PWA shell (can be configured early but validated last)
-  src/sw.ts + vite-plugin-pwa config
-  manifest icons
-```
-
-**Goals and the food library should be built first** because the meal log depends on the food library and the streak calendar depends on everything. The calendar is the last UI feature to build.
-
----
+### Anti-Pattern: Storing the API key in Dexie "for consistency with goals"
+Superficially tidy (one settings model), but couples a secret to the same read surface (`db.*`) that `export.svc.ts` iterates over wholesale — every future contributor touching the export loop has to remember to exclude it. `localStorage` makes the exclusion structural instead of a discipline problem.
 
 ## Integration Points
+
+### External Services
+
+| Service | Integration Pattern | Notes |
+|---------|---------------------|-------|
+| Anthropic Messages API (`api.anthropic.com/v1/messages`) | Direct browser fetch/SDK call with user's own key, `dangerouslyAllowBrowser: true` (SDK) or `anthropic-dangerous-direct-browser-access: true` header (raw fetch); forced tool-use for structured JSON | BYOK — key never leaves the user's device to any server the app controls (there is no app-controlled server). Must degrade to `local.provider.ts` on any failure (network, invalid key, rate limit). Verify exact model slug (`claude-haiku-4-5` at time of writing) against current Anthropic docs before implementation — model names iterate on a roughly 6–12 month cadence. |
+| Hevy API | **Not integrated in v2** — `dailyCheckins.source: 'hevy'` is the only accommodation made now (a value the field can hold). Actual sync requires Hevy Pro (neither user has it) and is explicitly deferred. | Data-model-ready, code-not-ready. Don't build a sync client speculatively. |
 
 ### Internal Boundaries
 
 | Boundary | Communication | Notes |
-|----------|--------------|-------|
-| Feature ↔ Service | Direct function call | Services are pure TS; no React coupling |
-| Service ↔ Dexie | Dexie Table API | All behind service layer |
-| liveQuery ↔ React | `useLiveQuery` hook (dexie-react-hooks) | Returns `undefined` while loading — components must handle |
-| OPFS ↔ Main thread | Async File System API | SW does not intercept OPFS; main thread only |
-| Export ↔ File system | `showSaveFilePicker` (File System Access API) with `<a download>` fallback | File System Access API not available on iOS; detect and fall back |
-
-### External Services
-
-None. This is intentional. The app has no network dependencies at runtime. All data is local.
-
----
-
-## Scaling Considerations
-
-This is a single-user personal app. Traditional "scaling" concerns (multi-user, server load) do not apply. The relevant constraints are device storage and IDB performance ceilings.
-
-| Data Volume | Behavior | Notes |
-|-------------|----------|-------|
-| ~1 year of daily logging | Trivial | ~365 step entries, ~365 lift checkins, ~1500 meal entries, ~200 PT sessions |
-| ~5 years | Still fine | IDB handles millions of records; this app will never approach that |
-| Photo library (100 food photos, ~200KB each) | ~20MB OPFS | Well within quota on any device |
-| Export JSON file size | ~2MB without photos, ~20MB with photos | Fine for manual backup; no streaming needed |
-
-The only realistic performance concern is the streak calendar query on slow mobile devices with several years of data. Mitigate by memoizing the range query result and only re-fetching when the visible month changes.
-
----
+|----------|---------------|-------|
+| `parse.svc.ts` ↔ `food.svc.ts` | Direct function call, plain objects (`ParsedFoodItem[]`) | Parsing and persistence stay separate services, same split precedent as `food.svc.ts` (library) vs `meals.svc.ts` (logging) in v1 |
+| `parse.svc.ts` ↔ `anthropic.provider.ts` / `local.provider.ts` | Dynamic `import()`, shared `ParseProvider` interface | Keeps the Anthropic SDK out of the main bundle; swap point if a third provider is ever added |
+| `closure.svc.ts` ↔ `mealEntries` / `dailyCheckins` | Dexie range queries, `Promise.all`, one call per visible range | Same anti-per-cell-query discipline as v1 `streak.svc.ts` |
+| `export.svc.ts` / `import.svc.ts` ↔ `apiKeyStore.ts` | **None — deliberately no import.** | The absence of this dependency is the point (see API Key Storage) |
 
 ## Sources
 
-- [Dexie.js — Version.stores() documentation](https://dexie.org/docs/Version/Version.stores())
-- [Dexie.js — Compound Index](https://dexie.org/docs/Compound-Index)
-- [Dexie.js — Database Versioning (Tutorial)](https://dexie.org/docs/Tutorial/Design#database-versioning)
-- [Dexie.js — useLiveQuery()](https://dexie.org/docs/dexie-react-hooks/useLiveQuery())
-- [MDN — Origin Private File System](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system)
-- [MDN — Storage quotas and eviction criteria](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria)
-- [web.dev — Storage for the web](https://web.dev/articles/storage-for-the-web)
-- [RxDB — LocalStorage vs IndexedDB vs OPFS comparison](https://rxdb.info/articles/localstorage-indexeddb-cookies-opfs-sqlite-wasm.html)
-- [Vite PWA — injectManifest strategy](https://vite-pwa-org.netlify.app/guide/inject-manifest)
-- [Vite PWA — Service worker precache](https://vite-pwa-org.netlify.app/guide/service-worker-precache)
-- [IndexedDB — A Comprehensive Guide to Indexes (Medium)](https://medium.com/@kamresh485/a-comprehensive-guide-to-indexeddb-indexes-enhancing-data-retrieval-in-web-applications-8755957c0cbe)
-- [The PWA Data Trap (Medium — backup/restore patterns)](https://scottkuhl.medium.com/the-pwa-data-trap-5bd94d546348)
+- Existing codebase, read directly: `src/db/db.ts`, `src/db/schema.ts`, `src/services/meals.svc.ts`, `src/services/streak.svc.ts`, `src/services/export.svc.ts`, `src/services/food.svc.ts`, `src/services/lifts.svc.ts`, `src/services/goals.svc.ts`, `src/lib/photoStore.ts`, `src/main.tsx`, `src/App.tsx` — HIGH confidence, ground truth for "as-is" architecture.
+- `.planning/PROJECT.md`, `HEALTHTRACKER-CONTEXT.md` — HIGH confidence for v2 requirements and locked decisions; MEDIUM/flagged for the still-open closure-semantics question.
+- Dexie compound primary keys and `stores()` syntax — HIGH confidence, core documented Dexie behavior (dexie.org/docs/Version/Version.upgrade()).
+- Dexie table-deletion-on-upgrade bug: [dexie/Dexie.js#889](https://github.com/dfahlander/Dexie.js/issues/889), [dexie/Dexie.js#276](https://github.com/dexie/Dexie.js/issues/276) — MEDIUM confidence (community-reported GitHub issues, not official docs, but corroborated across multiple independent reports).
+- Anthropic browser-direct CORS support / `anthropic-dangerous-direct-browser-access` header: [Simon Willison, Aug 2024](https://simonwillison.net/2024/Aug/23/anthropic-dangerous-direct-browser-access/), [anthropic-sdk-typescript#248](https://github.com/anthropics/anthropic-sdk-typescript/issues/248) — HIGH confidence, corroborated by SDK's own `dangerouslyAllowBrowser` option existing for this exact use case.
+- Claude Haiku 4.5 model availability: [Anthropic](https://www.anthropic.com/claude/haiku), [AWS Bedrock model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html) — MEDIUM confidence (launched Oct 2025, EOL no sooner than Oct 2026 per these sources; re-verify exact model slug at implementation time).
 
 ---
-*Architecture research for: HealthTracker — fully-local IndexedDB PWA*
-*Researched: 2026-04-19*
+*Architecture research for: HealthTracker v2.0 Duo Redesign — integration of new features onto existing codebase*
+*Researched: 2026-08-08*

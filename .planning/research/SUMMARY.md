@@ -1,253 +1,167 @@
 # Project Research Summary
 
-**Project:** HealthTracker
-**Domain:** Fully-local offline-first PWA, single-user personal health tracker
-**Researched:** 2026-04-19
-**Confidence:** HIGH
+**Project:** HealthTracker — v2.0 Duo Redesign
+**Domain:** Fully-local, offline-first PWA — AI-assisted personal health/fitness tracking (food macros, lift/cardio check-offs, weight) for two independent local users, no backend
+**Researched:** 2026-08-08
+**Confidence:** MEDIUM-HIGH
 
 ## Executive Summary
 
-HealthTracker is a single-user, fully-local PWA that unifies four daily tracking domains (PT/rehab exercises, food macros, manual steps, lift check-in) behind a 4-segment calendar streak loop. No comparable app combines these domains into a unified visual; the calendar is both the core differentiator and the primary retention mechanism. The correct build approach is a thin React SPA over Dexie-backed IndexedDB with a Workbox-managed service worker — no server, no auth, no cloud dependencies at any layer. Every technology choice should bias toward fast local writes, reactive UI from `useLiveQuery`, and zero-friction mobile logging.
+HealthTracker v2.0 is not a new product — it's a schema-and-UI rebuild layered onto an already-shipped, working v1 codebase (React 19 + Vite 7 + Dexie 4 + Tailwind 4, unchanged). The new surface area is: browser-direct AI food parsing (Claude Haiku via a hand-rolled `fetch`, BYOK), a self-building food library, generalized lift+cardio check-offs, weight tracking with EMA-smoothed trend charts, an Apple-Fitness-style daily "closure ring" replacing the v1 quadrant calendar, and a new Dashboard tab. Every research file agrees on the shape of the solution: keep the existing Dexie/OPFS/service-layer conventions exactly as they are, add new stores via an **appended** `db.version(2)` block, and treat AI parsing as one interchangeable provider behind a `parse.svc.ts` orchestrator with a local, network-free fallback that is always fully first-class (not a degraded backup).
 
-The recommended stack is React 19 + Vite 7 + TypeScript + Dexie 4 + Tailwind CSS 4 + shadcn/ui + react-activity-calendar + Recharts + React Hook Form + Zod. All libraries are version-verified as of April 2026 and mutually compatible. One caveat: pin Vite to 7.x until vite-plugin-pwa 1.3 resolves its Vite 8 peer-dep gap. The entire stack is offline-capable with no runtime dependencies on external services.
+The recommended approach is deliberately lean: no `@anthropic-ai/sdk` (bundle-size discipline — hand-rolled `fetch` + one required CORS header instead), no new charting library (Recharts already covers every Dashboard visualization), no fuzzy-matching or nutrition-database dependency (exact-normalized-match dedupe is sufficient at this data scale), and one new animation library (`motion`) for the ring's spring/bounce close. The single highest-leverage design decision — what "closes" the food segment of the ring — is resolved by research as a **hybrid**: any-log presence closes the ring (protects the low-friction daily win), while a secondary visual cue and the Dashboard's adherence score carry the "was it actually on-target" precision. This should be locked as a decision before ring UI implementation, exactly as flagged in PROJECT.md.
 
-The two existential risks are (1) iOS storage eviction silently wiping months of data for non-installed users, and (2) subtle date-key timezone bugs producing invisible data corruption. Both must be prevented at the data-layer foundation phase before any feature work begins. A third structural risk — all-or-nothing streak anxiety causing abandonment — must be addressed in the calendar UI design: partial segment fill must read as progress, never as failure.
-
----
+The dominant risk cluster is **silent correctness failures**, not missing features: (1) LLM unit-confusion hallucinations quietly corrupting logged macros unless every parse goes through a mandatory confirm-and-edit screen with an arithmetic-consistency check; (2) Web Speech API silently doing nothing once the PWA is installed to an iOS home screen — the exact install mode the app needs for storage durability — meaning voice must be a nice-to-have layered on a typing flow that is always fully capable, never a fallback; (3) violating the append-only Dexie migration rule while removing PT/steps and adding new stores in the same release, which is the highest-stakes migration this app will ever run since it touches real historical data unattended; and (4) reintroducing the already-known "async await inside a Dexie transaction auto-commits silently" bug via the new fetch-then-save AI parsing flow. All four are well-understood and fully preventable with patterns spelled out in ARCHITECTURE.md and PITFALLS.md — the risk is process discipline (build fallback alongside AI, never combine store deletion with other schema changes), not unknown unknowns.
 
 ## Key Findings
 
 ### Recommended Stack
 
-One coherent stack covers all needs with no gaps. Use React 19 + Vite 7 as the SPA foundation; Dexie 4 + `useLiveQuery` as the reactive data layer; Tailwind CSS 4 + shadcn/ui for styling; react-activity-calendar for the month-grid heatmap; Recharts for macro progress bars; RHF + Zod for all forms; Zustand for ephemeral UI state only. vite-plugin-pwa with `injectManifest` strategy handles the service worker and PWA manifest.
+The existing v1 stack (React 19, Vite 7, TypeScript, Dexie 4 + `useLiveQuery`, Tailwind 4, shadcn/ui, React Hook Form + Zod, Recharts) is unchanged and re-validated for v2's new features. Four new packages cover 100% of new v2 UI/AI needs; no chart, fuzzy-match, stats, or speech-recognition-wrapper library is needed.
 
-**Core technologies:**
-- **React 19 + Vite 7 + TypeScript:** SPA scaffold — largest ecosystem, React compiler automatic memoization, Vite sub-second HMR, TypeScript required for Dexie `EntityTable` safety
-- **Dexie 4.4 + dexie-react-hooks:** IndexedDB ORM — `useLiveQuery` makes the DB reactive, eliminates manual subscription wiring, `EntityTable<T,PK>` gives full TypeScript inference
-- **vite-plugin-pwa 1.2 (Workbox):** Service worker + offline — zero-config precaching, install prompt, SPA navigation fallback; pin Vite to 7.x for clean peer deps
-- **Tailwind CSS 4.2 + shadcn/ui:** Styling — CSS-native variables, `.dark` class toggle, shadcn copies components into source tree (zero runtime, offline-safe)
-- **react-activity-calendar 3.1:** Calendar heatmap — purpose-built GitHub-contribution-graph-style grid; custom `renderBlock` prop for the 4-segment `DayCell.tsx`
-- **Recharts 3.8:** Charts — SVG-native, composable, works cleanly with Tailwind CSS custom properties for macro progress bars
-- **React Hook Form 7.7 + Zod 3.25:** Forms + validation — uncontrolled inputs (zero keystroke re-renders), schemas double as TypeScript types, pair via `@hookform/resolvers/zod`
-- **Zustand 5:** Ephemeral UI state only — selected date, modal flags, active tab; never used for data that belongs in Dexie
-
-**Do not use:** Next.js (SSR adds zero value, complicates service worker), Redux (Dexie + Zustand covers all state needs), CRA (unmaintained), Firebase/Supabase (require network), RxDB (sync overhead not needed), React Context for data (causes subtree re-renders that `useLiveQuery` avoids).
+**Core additions:**
+- Hand-rolled `fetch()` against `api.anthropic.com/v1/messages` (no SDK) — sends `anthropic-dangerous-direct-browser-access: true` alongside `x-api-key`/`anthropic-version`; this is a confirmed, intentional Anthropic BYOK feature, not a hack. Avoids the Node-oriented `@anthropic-ai/sdk` bundle weight for a single non-streaming JSON call.
+- `claude-haiku-4-5-20251001` with `output_config.format` (JSON Schema structured outputs) — guarantees valid macro JSON instead of prose-wrapped JSON; confirmed supported on this specific model snapshot.
+- Native `SpeechRecognition`/`webkitSpeechRecognition` behind a hand-written ~60-80 line hook (no `react-speech-recognition` package — unmaintained, wrong abstraction shape for the iOS-standalone detection this project specifically needs) + `@types/dom-speech-recognition` as a dev dependency for types.
+- `motion` (13.0.0, import from `motion/react`) for the ring-closure spring/bounce animation — full React 19 concurrent-render support.
+- `sonner` (2.0.7) for toasts (parse success/failure, offline-fallback notices) and `@number-flow/react` (0.6.2) for animated macro counters.
+- Existing Zod, Recharts, and `react-activity-calendar` are reused as-is (Zod validates both the AI and local-parser output through one shared schema; Recharts covers every new Dashboard chart type; `react-activity-calendar` may still be useful for a Dashboard consistency heatmap — confirm during Dashboard UI design, don't discard reflexively).
 
 ### Expected Features
 
-**Must have for v1 (table stakes):**
-- **PT templates + session log** — log actuals against prescribed sets/reps with notes; template must exist before session can be logged
-- **Food library + meal log + macro progress bars** — custom food library (name, macros, optional photo); log to named meal buckets; daily cals/P/C/F progress bars with live-update after each entry; configurable daily targets in Settings
-- **Step entry + goal progress indicator** — manual count per day, progress bar toward configurable step goal
-- **Daily lift check-in** — yes/no + optional note; lowest-friction of the four domains
-- **4-segment day indicator + calendar month view** — the streak loop; partial fill (1-4 segments) as visible progress; calendar depends on all four logging areas existing
-- **Installable PWA + offline** — home-screen install is not optional UX; it is the iOS data-safety strategy
-- **JSON export** — must ship before daily use begins; `schemaVersion` in envelope from day one
+**Must have (table stakes) — matches PROJECT.md's Active requirements list:**
+- Freeform text entry for food with a real parser + offline fallback
+- Editable confirm-before-log screen — never auto-commit an AI guess
+- One-tap re-log of previously-logged/frequent items (the "auto-library" payoff)
+- Binary one-tap check-off for lift and cardio (no sets/reps/duration)
+- Single-field, single-tap daily weight entry (no time-of-day discipline enforced)
+- A visible daily completion state that updates live and optimistically
+- Long-term smoothed weight trend chart (raw dots + EMA line, not raw scatter alone)
+- A weeks/months consistency/adherence view (the Dashboard's core job)
+- Manual on-device API key entry with a clear "AI degraded/unavailable" indicator
 
-**Should have for v1.x:**
-- Pain/difficulty rating (0-5) on PT sessions — HIGH value for rehab feedback, LOW complexity; single optional field
-- Quick re-log / recent foods surface — most-recent and most-frequent foods one-tap on meal log screen; must ship alongside food logging or abandonment is likely
-- Session history per exercise (see last actuals when logging current session)
-- Streak count display alongside calendar
-- JSON import (completes backup/restore loop)
+**Should have (differentiators):**
+- Zero-database, parse-only food entry (no search UI at all — simpler than any competitor)
+- Auto-building library with zero manual "create food" step
+- Apple-ring closure applied to food+lift+cardio (a genuine cross-domain synthesis, not copied)
+- Dashboard combining weight + eating adherence + training consistency in one glanceable view
+- `source: 'manual' | 'hevy'` field on check-off records now, at near-zero cost, to avoid an expensive retrofit later
 
-**Defer to v2+:**
-- Per-exercise history chart (needs enough historical data to be meaningful)
-- Weekly macro summary view
-- Year-view heatmap (wait until there is a full year of data)
-- Meal templates / combo recall (v1.x after core loop is proven)
-
-**Anti-features (never add):**
-- Push notification reminders — notification fatigue is the #1 fitness app abandonment trigger
-- Gamification layers (badges, XP, freeze tokens) — the 4-segment indicator is exactly enough gamification
-- Adaptive macro targets — requires bodyweight data (explicitly out of scope)
-- All-or-nothing streak resets — partial days must read as progress; never show red/empty states for partial fill
+**Defer / anti-features (explicitly avoid):**
+- Full nutrition database search/browse, photo-based AI food recognition, fuzzy/semantic library dedupe, streak freezes/gamification, push notifications, weight-goal/days-to-goal projections, configurable smoothing-algorithm choice — all explicitly out of scope per PROJECT.md and/or flagged as over-engineering for a 2-user app.
 
 ### Architecture Approach
 
-Single Dexie instance (`db.ts`) with 7 object stores, a strict UI → services → db dependency direction, and `useLiveQuery` as the sole reactive bridge between the DB and React. Feature slices never import each other's internals; all cross-cutting reads go through `services/streak.svc.ts` which issues 4 range queries for the visible month and returns a keyed map — not 4N per-cell queries. Photos live in OPFS (not as IDB blobs), referenced by filename only in `foods.photoKey`.
+The existing layering (UI → feature `hooks.ts` → `*.svc.ts` → `db.ts`, with `useLiveQuery` for reactivity) is preserved unchanged; v2 adds new services (`checkins.svc.ts`, `weight.svc.ts`, `closure.svc.ts`, `parse.svc.ts` + a `parseProviders/` boundary, `import.svc.ts`) alongside modified ones (`food.svc.ts` gains dedupe/usage tracking, `export.svc.ts` gains a v2 envelope) and one new non-Dexie persistence helper (`lib/apiKeyStore.ts`, deliberately in `localStorage`, not Dexie, so it is *structurally* excluded from JSON export rather than relying on a filter someone has to remember).
 
-**Major components and responsibilities:**
-1. **`db/db.ts` + `schema.ts`** — single Dexie instance; all version declarations; TypeScript interfaces for all 7 stores; foundation everything else builds on
-2. **`lib/dayKey.ts`** — canonical `todayKey()` / `dateToKey()` / `keyToDate()` using local date getters; the UTC date bug cannot occur if all code routes through this module
-3. **`lib/photoStore.ts`** — OPFS read/write/delete for food photos; resize to 800×800px WebP before write; store only filename in IDB
-4. **`services/*.svc.ts`** — typed Dexie query wrappers; feature components never call `db.table.where()` directly; `streak.svc.ts` aggregates all 4 stores for calendar range queries
-5. **`features/` slices (pt, food, steps, lifts, calendar, settings)** — self-contained UI; consume only their own service + `lib/*` + `components/*`; calendar is the final slice built because it depends on all others
-6. **`lib/exportImport.ts`** — JSON dump/restore; versioned `ExportEnvelope` with `schemaVersion`; photos embedded as base64 data URIs for self-contained backups
-7. **Service worker (`src/sw.ts` via vite-plugin-pwa `injectManifest`)** — precaches app shell; `autoUpdate` + `skipWaiting` update prompt; `sw.js` must never be cached by itself
-
-**Non-negotiable architecture decisions:**
-1. **Object store layout per ARCHITECTURE.md** — 7 stores, single Dexie instance, service-layer encapsulation; cross-store transactions (export/import) require one DB
-2. **`dayKey` always from local date getters** — `YYYY-MM-DD` via `getFullYear()`/`getMonth()`/`getDate()`; never from `toISOString()`; lexicographic sort equals chronological sort, enabling IDB range queries
-3. **OPFS for photo storage** — `foods.photoKey` is a filename string only; resize to 800×800px WebP at 70-80% quality before write; `createObjectURL` on demand, revoke after render
-4. **Dexie `liveQuery` as the only reactive layer** — components use `useLiveQuery`; no Zustand or React Context for persisted data; Zustand only for transient UI state
+**Major components:**
+1. **`db/db.ts` `version(2)` block** — additive-only: new `dailyCheckins` (compound key `[dayKey+kind]` + a required secondary `dayKey` index for range queries) and `weightEntries` stores; `foods` gains `normalizedName`/`usageCount`/`lastUsedAt`/`servingQty`/`servingUnit`/`parseSource`. The `upgrade()` callback migrates real `liftCheckins` history into `dailyCheckins` and backfills `foods` usage stats from `mealEntries` — every `await` inside must be a `tx.table(...)` call, nothing else.
+2. **`parse.svc.ts` + provider boundary** — orchestrates Anthropic vs. local parsing behind one interface; the Anthropic provider is dynamically imported (code-split, never loads for offline/no-key users); the local provider is a calculator over the user's own stated quantities, never a bundled nutrition database, and never fabricates macros for ambiguous input.
+3. **`closure.svc.ts`** — replaces `streak.svc.ts`, reusing its exact range-aggregation (`Promise.all` per visible range, never per-cell) and streak-count-scan patterns against `mealEntries` + `dailyCheckins` instead of the old 4 stores.
+4. **Orphaned v1 data handling** — `ptTemplates`/`ptSessions`/`stepEntries` are left declared-but-unused (Option A: omit from `version(2).stores()`, Dexie carries them forward inert); store *deletion* (`: null`) must happen only in a later, fully isolated version bump per Dexie's documented deletion-plus-other-changes bug.
+5. **Route/IA change** — `/today`→`/daily` (closure state + all entry points), `/calendar`→`/dashboard` (Recharts trend/adherence views), `/day/:dayKey` and HashRouter unchanged.
 
 ### Critical Pitfalls
 
-**Top 5 that must be prevented from Phase 1:**
+1. **API key leaks via JSON export/logs** — the key must live in its own record (or `localStorage`, per architecture recommendation) excluded from the export **allowlist by construction**, never included via a naive `...settings` spread; mask the key in the UI and never log request/response bodies.
+2. **Web Speech API silently breaks once installed to the iOS home screen** — the exact install mode the app needs for `navigator.storage.persist()` durability. Voice must be a nice-to-have layered on typing; detect standalone mode + feature presence and hide/relabel the mic rather than leaving a silently-dead button.
+3. **LLM macro hallucination (unit confusion, inconsistent arithmetic)** — mandatory confirm-before-save screen showing the model's *interpreted quantity/unit*, plus a Zod-validated arithmetic-consistency check (`calories ≈ protein*4 + carbs*4 + fat*9`) that flags rather than silently trusts suspect parses. Never auto-commit an AI guess.
+4. **Removing PT/steps by editing `version(1)` (violates append-only rule)** — must be a *new* version block with `{ table: null }`, never a bundled deletion alongside other structural changes in the same version, per Dexie's own documented bug in combining deletion with other upgrade work.
+5. **Reintroducing the "await non-IDB promise inside a Dexie transaction" bug via the new fetch-then-save AI flow** — resolve the Claude call to a plain object *before* opening any `db.transaction()`; the transaction body must only ever await other Dexie calls. This is the single most likely place in v2 to reintroduce a known, project-breaking v1 bug because "fetch, then save" is the natural code shape.
 
-1. **Dexie async-in-transaction (project-breaking, silent data loss)** — Never `await` a non-Dexie promise inside `db.transaction()`. Fetch all inputs before entering the transaction; pass results in. Any macro-task yield (setTimeout, fetch, `storage.estimate()`) commits the IDB transaction and makes subsequent writes no-ops. No error is thrown; data simply disappears.
-
-2. **iOS 7-day storage eviction (project-breaking for non-installed users)** — Safari wipes all script-writable storage for any origin inactive for 7 days of Safari use. Exception: home-screen installed PWAs are exempt. Strategy: call `navigator.storage.persist()` on launch; surface install prompt with data-safety framing; show a warning banner after 4+ days of inactivity in Safari tab.
-
-3. **Schema migration append-only rule (project-breaking if violated)** — Every `db.version(N)` block is immutable once shipped. Never edit past versions; always add `db.version(N+1)` with `.upgrade()` handler. Document version history in `db.ts` comments. Test migrations against a real v1 DB snapshot, not a fresh install.
-
-4. **UTC midnight date bug (high severity, invisible corruption)** — `new Date().toISOString().split('T')[0]` returns the UTC date; after 7pm in UTC-5, "today" UTC is already tomorrow local. Use `lib/dayKey.ts:todayKey()` exclusively. Unit-test at 11:30pm in a UTC-5 context before any feature ships.
-
-5. **Photo resize before write (moderate-to-high, crashes mobile)** — Raw iPhone photos are 3-12 MB. 50 food photos without resizing equals 250 MB+ of IDB bloat; the food library crashes on low-end phones. Resize to 800×800px WebP at 70-80% quality client-side (canvas) before calling `savePhoto()`.
-
----
-
-## Open Decisions That Affect Roadmap and Requirements
-
-These are unresolved by research and must be decided before or during requirements:
-
-1. **Segment completion definition — "any log" vs "hit target"**
-   - PT segment: any session logged today, or must complete all template exercises?
-   - Food segment: any meal entry logged, or must hit calorie/protein targets?
-   - Steps segment: any count entered, or must reach step goal?
-   - Recommendation: "any log" for PT and steps (rehab context; rest days are medically valid); "hit calorie target" for food (macros are the cut signal). Needs explicit decision before `streak.svc.ts` is written.
-
-2. **Calendar view — month-at-a-time vs rolling 28/30 days**
-   - Month-at-a-time aligns with react-activity-calendar defaults and natural mental model.
-   - Recommendation: month-at-a-time for v1; rolling view is a v1.x option.
-
-3. **Pain rating in v1 or v1.x**
-   - Research rates it HIGH value, LOW complexity (single optional integer field on `ptSessions`).
-   - Recommendation: add to v1 scope; the schema cost is one optional field and it closes the rehab feedback loop immediately.
-
----
+Additional moderate pitfalls worth carrying into planning: weight dayKey collision policy (last-write-wins with visible feedback) + mandatory EMA trend line (raw daily weight is noise-dominated); `schemaVersion` bump discipline for export/import after feature removal (must produce a clear "X items not imported" summary, not a crash or silent drop); `useLiveQuery` subscription explosion on the Dashboard (one query per chart/date-range, not per cell/data-point); ring-closure animation jank on budget Android (prefer `transform`/`opacity`-driven, GPU-compositable animation over raw `stroke-dashoffset`/gradient recalculation, and test on the lower-spec of the two users' real phones); and re-verifying the service-worker update-prompt flow end-to-end given this is the single riskiest schema-plus-UI release the app will ever ship.
 
 ## Implications for Roadmap
 
-### Suggested Phase Structure
+ARCHITECTURE.md's researched build order is the strongest available signal for phase sequencing — it is derived directly from dependency analysis of the target system, not just feature grouping. FEATURES.md's dependency graph and PITFALLS.md's phase mapping both corroborate the same order independently. Given this project's config (coarse granularity, 4 phases target), the 5 architecture-suggested steps compress naturally into ~4 phases by merging steps 1 and the start of 2, or keeping 5 phases if the roadmapper judges phase 1 (schema) too foundational/risky to combine with anything else.
 
-#### Phase 1: Data Layer Foundation
-**Rationale:** Every feature depends on the DB schema, dayKey utility, and schema versioning convention. These must be locked before any feature code is written.
-**Delivers:** `db/db.ts` (all 7 stores, version 1), `schema.ts`, `lib/dayKey.ts`, `lib/photoStore.ts`, migration convention documented in code
-**Avoids:** UTC date bug, schema migration pitfall, async-in-transaction (establish transaction pattern as convention)
-**Research flag:** No deeper research needed — Dexie patterns are well-established
+### Phase 1: Data Layer Migration (Schema v2 + Feature Removal)
+**Rationale:** Every other new feature (check-offs, weight, parsing, closure) depends on the new `dailyCheckins`/`weightEntries` stores and evolved `foods` shape existing first. This is also where the project's single highest-stakes migration risk lives (append-only rule, real historical data, unattended `upgrade()` callback) — get the pattern right before any UI touches it.
+**Delivers:** `db.version(2)` block (additive `dailyCheckins`, `weightEntries`, evolved `foods`), `liftCheckins`→`dailyCheckins` data migration, `foods` usage-count backfill, PT/steps code deletion (stores left orphaned-but-declared per Option A, no deletion this release).
+**Addresses:** Hevy-sync-ready `source` field (FEATURES.md), schema prerequisites for all Active requirements.
+**Avoids:** Pitfall 4 (append-only violation), Pitfall 5 groundwork (transaction discipline established here), Pitfall 9 (export/import schemaVersion mismatch after removal).
 
-#### Phase 2: PWA Shell + Settings
-**Rationale:** The PWA manifest, service worker, and iOS storage-persistence call must exist before any data is logged. A user who starts logging before the PWA is installed faces immediate eviction risk.
-**Delivers:** Installable PWA (manifest, icons, service worker with `skipWaiting` update prompt), `navigator.storage.persist()` on launch, install prompt with data-safety framing, Goals/Settings form (daily targets for cals/P/C/F/steps)
-**Avoids:** iOS 7-day eviction, stale service worker
-**Research flag:** No deeper research needed — vite-plugin-pwa injectManifest is documented
+### Phase 2: Check-offs, Weight, and Local-Only Logging
+**Rationale:** Straightforward CRUD against the Phase 1 schema with no AI/network dependency — lowest risk, validates the new data layer end-to-end before the highest-uncertainty piece (AI parsing) is attempted.
+**Delivers:** `checkins.svc.ts` (lift + cardio one-tap tiles), `weight.svc.ts` (single-entry-per-day CRUD), minimal UI for both.
+**Uses:** Existing Dexie/`useLiveQuery` conventions; no new stack dependencies.
+**Implements:** `checkins.svc.ts`, `weight.svc.ts` from ARCHITECTURE.md.
+**Avoids:** Pitfall 8 (weight dayKey collision policy must be decided and tested here, before Dashboard consumes it).
 
-#### Phase 3: Food Library + Meal Log
-**Rationale:** Food logging is the highest-friction domain and the dependency root for macro progress bars. Build the library (create food, photo resize/OPFS, name search) and the log (add food to day, live macro totals update) together.
-**Delivers:** Food library CRUD with optional photo, meal log with recent/frequent foods quick-add, live macro progress bars, daily targets wired from Settings
-**Avoids:** Photo blob pitfall (resize pipeline), food logging friction pitfall (quick re-log surface must ship here, not later)
-**Research flag:** No deeper research needed — Dexie OPFS patterns are documented
+### Phase 3: AI Food Parsing + Auto-Library
+**Rationale:** The single highest-uncertainty piece (external API, structured-output reliability, offline fallback UX, voice-input platform limitation) — build once the data layer beneath it (Phase 1) is stable, so parsed items land somewhere correct.
+**Delivers:** `parse.svc.ts` orchestrator + `anthropic.provider.ts`/`local.provider.ts`, `apiKeyStore.ts` (localStorage, excluded from export by construction), `food.svc.ts` dedupe/usage-tracking evolution, freeform entry UI with mandatory confirm-before-save screen, recent/frequent one-tap re-log list, voice-input hook with standalone-PWA detection and graceful text-first fallback.
+**Addresses:** AI-parsed food entry, smart auto-library, one-tap re-log (all P1 in FEATURES.md's prioritization matrix).
+**Avoids:** Pitfall 1 (API key leakage), Pitfall 2 (voice silently breaking on iOS standalone), Pitfall 3 (LLM hallucination — confirm screen + arithmetic-consistency check), Pitfall 5 (transaction/fetch ordering), Pitfall 7 (double-log race conditions on one-tap re-log).
 
-#### Phase 4: PT Templates + Session Log
-**Rationale:** Self-contained domain; depends only on `db.ts` and `dayKey`. PT is the most medically meaningful domain for this user. Templates-first, then session log against template.
-**Delivers:** PT template CRUD (exercise name, target sets/reps, notes), session logging (actuals + notes, optional pain rating if accepted into scope), template-vs-actual diff on completion screen
-**Research flag:** No deeper research needed
+### Phase 4: Closure Loop + Dashboard
+**Rationale:** Depends on Phases 2 and 3 producing real `mealEntries`/`dailyCheckins`/`weightEntries` data to visualize meaningfully; this is also where the outstanding "food closure semantics" design decision (hybrid any-log + secondary on-target indicator, per FEATURES.md's Option C recommendation) must be locked before implementation, mirroring how v1 locked its equivalent decision before Phase 3.
+**Delivers:** `closure.svc.ts` (replaces `streak.svc.ts`), ring-closure UI (`motion`-driven spring/bounce), `/daily` route (today's ring + all entry points), `/dashboard` route (Recharts weight trend + eating-adherence + training-consistency views), `NumberFlow` animated counters.
+**Addresses:** Daily closure loop, Daily tab, Dashboard tab (all P1 in FEATURES.md).
+**Avoids:** Pitfall 10 (`useLiveQuery` subscription explosion — one query per chart/date-range), Pitfall 11 (ring animation jank on budget Android — `transform`/`opacity`-driven, tested on real low-end hardware).
 
-#### Phase 5: Steps + Lift Check-in
-**Rationale:** Both are trivially simple (single integer or boolean per day, natural `dayKey` primary key). Build together since they share the same data pattern.
-**Delivers:** Step entry with goal progress bar, lift yes/no check-in with optional note
-**Research flag:** No deeper research needed
-
-#### Phase 6: Calendar + Streak View (Capstone)
-**Rationale:** The calendar reads from all four domains and cannot be built before they all exist. This is the feature that closes the motivational loop — it is both last by dependency graph and highest by product value.
-**Delivers:** Month-grid calendar (react-activity-calendar + custom `DayCell.tsx` with 4 SVG arc segments), `streak.svc.ts` range-query aggregation (4 queries for full month, not 4N per-cell), partial-fill states visually positive for all non-zero values, streak count display
-**Avoids:** Streak anxiety pitfall (no red/empty states for partial days), N×4 query anti-pattern
-**Research flag:** DayCell SVG arc design and dark-mode color palette for 0/1/2/3/4 segment states need explicit design decisions before implementation
-
-#### Phase 7: JSON Export + Backup UX
-**Rationale:** Must exist before the user has data worth losing, but after data models are stable. Export after all four domains ship to avoid schema-drift import failures.
-**Delivers:** JSON export with versioned `ExportEnvelope`, photos as base64 data URIs, export in Settings, first-use data-safety banner, monthly backup reminder
-**Research flag:** No deeper research needed — export format is fully specified in ARCHITECTURE.md
+*(If the roadmapper prefers a 5th phase rather than compressing, Export/Import v2 + final PWA/rollout verification can be split out as its own phase — it depends on every prior store shape being final, and is where the service-worker update-prompt flow for this schema-breaking release must be verified end-to-end on both users' installed apps before calling v2 complete. See ARCHITECTURE.md's build-order step 5 and PITFALLS.md's Pitfall 12.)*
 
 ### Phase Ordering Rationale
 
-- Data layer (Phase 1) and PWA shell (Phase 2) are prerequisites for everything; neither can be deferred
-- Food library (Phase 3) ships before PT (Phase 4) because food logging is the highest daily friction and most likely early abandonment risk
-- Steps + lifts (Phase 5) are trivial in isolation but their data is required before the calendar capstone
-- Calendar (Phase 6) is last by hard dependency — it reads from all 4 domain stores
-- Export (Phase 7) ships after the data model is stable to avoid schema-drift import failures
+- **Schema-first is non-negotiable:** every other phase's services and UI read/write the Phase 1 stores; sequencing anything AI- or UI-related before the schema is stable would mean building against a moving target.
+- **Low-risk-before-high-risk:** check-offs/weight (Phase 2) have no external dependencies and validate the data layer cheaply; AI parsing (Phase 3) is deliberately sequenced after, so its own risk (external API reliability, voice platform gaps) doesn't compound with schema risk simultaneously.
+- **Closure/Dashboard last because it's a consumer, not a producer:** FEATURES.md's dependency graph is explicit that "Dashboard requires closure history to already be capturable" — building it earlier would mean visualizing empty/fake data.
+- **The two hardest open design decisions (ring closure semantics, ring visual geometry) are placed at the start of Phase 4, not earlier** — they only need to be locked immediately before the phase that implements them, matching v1's own precedent of locking the equivalent decision right before Phase 3 there.
 
 ### Research Flags
 
-**Needs deeper design work during planning:**
-- **Phase 6 (Calendar):** DayCell SVG segment design for the 4-arc partial-fill indicator; dark-mode color palette for 0/1/2/3/4 states; interaction design for quick lift check-in from the calendar cell
+Phases likely needing deeper research during planning (`/gsd-research-phase`):
+- **Phase 3 (AI Parsing + Auto-Library):** Highest uncertainty in the whole milestone — structured-output reliability on the exact model slug at implementation time (model names iterate on a 6-12 month cadence), Web Speech API behavior may have shifted since this research (re-verify against current WebKit release notes), and the "hybrid" auto-library dedupe UX has no directly comparable shipped competitor pattern (LOW-MEDIUM confidence in FEATURES.md).
+- **Phase 4 (Closure Loop + Dashboard):** The ring-closure completion semantics decision (Option C hybrid) is a synthesized recommendation, not observed in a shipped competitor product (MEDIUM confidence) — worth a focused design pass before locking; ring animation performance on the specific lower-spec device in use should be spiked early in this phase, not assumed from research alone.
 
-**Standard patterns, skip research phase:**
-- Phases 1, 2, 3, 4, 5, 7: all patterns are documented in STACK.md, ARCHITECTURE.md, and PITFALLS.md
-
----
+Phases with standard, well-documented patterns (research-phase optional):
+- **Phase 1 (Data Layer Migration):** Dexie versioning/migration mechanics are HIGH confidence, directly sourced from official docs and the existing codebase's own established conventions.
+- **Phase 2 (Check-offs + Weight):** Pure CRUD against a settled schema, directly analogous to v1's already-shipped `liftCheckins` pattern — no new technical territory.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All versions verified against npm registry as of April 2026; all compatibility pairs confirmed |
-| Features | HIGH (core), MEDIUM (PT-specific) | Core patterns verified across competitor apps; PT rehab priorities from clinical literature; user validation still needed for pain rating |
-| Architecture | HIGH | Dexie/IndexedDB/OPFS patterns verified via official docs; export format is original design based on established patterns |
-| Pitfalls | HIGH | iOS eviction confirmed via WebKit blog + Apple Developer Forums; transaction auto-commit via IDB spec + Dexie docs; all top pitfalls have official source backing |
+| Stack | HIGH | Anthropic docs and npm versions fetched/verified live on the research date; only the exact Haiku model slug and Chrome on-device speech reliability are flagged as needing re-verification at implementation time (models iterate on a 6-12 month cadence). |
+| Features | MEDIUM | HIGH on Apple ring semantics and weight-smoothing math (well-documented, corroborated); MEDIUM on AI-parse confirm/edit UX (sourced from MacroFactor's public beta docs, not hands-on trial); LOW-MEDIUM on the auto-library dedupe UX specifically — no mainstream app publishes an equivalent "zero manual creation" pattern to compare against, this is a synthesized recommendation. |
+| Architecture | HIGH for Dexie migration mechanics, layering, and OPFS/SW strategy (read directly from the existing shipped codebase); MEDIUM for the Anthropic browser-direct call pattern and exact model id (server-side capability, not a frontend concern, but still worth reconfirming); explicitly LOW/flagged for the exact closure/ring completion semantics — an open decision by design, not a research gap. |
+| Pitfalls | HIGH for Dexie/IndexedDB and iOS PWA storage-eviction mechanics (official docs, WebKit bug tracker, Dexie maintainer sources); MEDIUM for LLM-parsing hallucination patterns and Web-Speech-in-standalone-PWA specifics (community reports and benchmark papers, no single authoritative source covers this exact combination — recommend re-verifying voice-input behavior on both users' actual installed devices before committing to voice-first UX). |
 
-**Overall confidence:** HIGH
+**Overall confidence:** MEDIUM-HIGH
 
 ### Gaps to Address
 
-- **Segment completion definition** ("any log" vs "hit target"): Must be resolved before `streak.svc.ts` is designed. Recommend logging the decision in PROJECT.md Key Decisions before Phase 1 starts.
-- **Pain rating field scope**: Research recommends v1 inclusion as a single optional integer on `ptSessions`. Needs owner decision before Phase 4.
-- **Calendar view style** (month-at-a-time vs rolling): Recommend month-at-a-time for v1; log decision in PROJECT.md before Phase 6.
-- **Rest day affordance for PT**: Required to prevent streak anxiety in a rehab context. Needs a data model decision: does a rest day create a `ptSessions` record with an `isRestDay` flag, or is it tracked separately?
-- **Install prompt trigger timing**: First launch vs. after first log entry vs. after N days. Needs UX decision before Phase 2.
-
----
-
-## Build Order Implications
-
-The dependency graph is unambiguous:
-
-```
-Data layer + dayKey     must come first — everything reads/writes through these
-  |
-  v
-PWA shell               must come before any data is logged — iOS eviction risk
-  |
-  v
-Food library + log      highest-friction domain; builds food data model; Settings needed here
-PT templates + log      self-contained; depends only on db + dayKey
-Steps + lift check-in   trivial; same data pattern; can parallel PT if bandwidth allows
-  |
-  v
-Calendar / streak       last — reads all 4 domain stores; cannot build before they exist
-  |
-  v
-JSON export             after data model is stable — schema drift breaks import compatibility
-```
-
-The calendar is both the product's core value and the last piece of code written. Every earlier phase is building toward it. If the calendar is deprioritized or delayed, the core motivational loop never closes.
-
----
+- **Ring-closure completion semantics (food segment: any-log vs. hit-target vs. hybrid)** — FEATURES.md and ARCHITECTURE.md both independently flag this as unresolved by research alone and recommend the Option C hybrid, but it is a design decision, not a fact to look up. Lock explicitly before Phase 4 implementation, per PROJECT.md's own note.
+- **Ring visual geometry/animation feel (segment count, bounce intensity, color palette)** — inherited as an open decision from v1's equivalent "DayCell SVG geometry" question; needs a dedicated design pass consulting the installed `apple-design`/`improve-animations` skills, not resolvable from research.
+- **Exact Claude model slug and structured-outputs parameter shape at implementation time** — verify `claude-haiku-4-5-20251001` (or whatever current dated snapshot exists) and `output_config.format` against `platform.claude.com/docs` immediately before building `anthropic.provider.ts`, since this research is time-boxed to 2026-08-08 and Anthropic iterates model names/API surface on a routine cadence.
+- **Web Speech API standalone-PWA behavior on both users' actual phones** — research relies on community/forum reports (MEDIUM-HIGH confidence but not first-party Apple documentation); must be verified on-device before voice input is presented as anything more than a best-effort enhancement.
+- **EMA alpha value and adherence-band thresholds for the food segment's secondary on-target indicator** — reasonable defaults are proposed (alpha ≈ 0.1-0.15; ±10% calorie band) but both are explicitly flagged as needing a spot-check against a few real weeks of both users' data, not treated as final.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Dexie.js official docs — schema versioning, `useLiveQuery`, OPFS comparison, blob indexing warning
-- MDN — IDBTransaction auto-commit, OPFS API, Storage quotas and eviction criteria
-- WebKit Blog: Updates to Storage Policy (Safari 17) — iOS 7-day eviction, persistent storage
-- vite-pwa/vite-plugin-pwa docs — injectManifest strategy, precaching, service worker registration
-- Tailwind CSS v4.2 release (InfoQ, April 2026) — CSS-native variables, `@tailwindcss/vite`
-- npm registry — versions verified: React 19.2.5, Dexie 4.4.2, Tailwind 4.2.2, react-activity-calendar 3.1.1, Recharts 3.8.1, RHF 7.72.1, Zustand 5.0.12 (pin Vite to 7.x)
-- Frontiers in Psychology (2025) — gamification S-curve and badge burnout research
+- Claude Platform Docs — TypeScript SDK & Structured Outputs (fetched live 2026-08-08): browser-direct call pattern, `output_config.format`, model support for `claude-haiku-4-5-20251001`
+- Simon Willison — Claude's API CORS support (anthropic-dangerous-direct-browser-access origin and intent)
+- Existing HealthTracker codebase (`src/db/db.ts`, `src/services/*.svc.ts`, `src/lib/photoStore.ts`, `src/main.tsx`) — ground truth for v1-as-shipped architecture
+- Dexie.js official docs — `Dexie.version()`, compound indexes, `useLiveQuery()`
+- Apple — "Close Your Rings" / Apple Support ring-goal documentation
+- npm registry live version checks (2026-08-08) for all new packages
 
 ### Secondary (MEDIUM confidence)
-- Apple Developer Forums — PWA home-screen data persistence beyond 7 days
-- vite-plugin-pwa GitHub issue #918 — Vite 8 peer-dep gap; works in practice but unresolved officially
-- Smashing Magazine (Feb 2026) — streak system UX psychology
-- MacroFactor, Cronometer, MFP, Strong/Hevy — competitor feature analysis
+- MacroFactor product page + Help Center — AI food-logging confirm/edit UX pattern
+- MyFitnessPal Blog/Support — recent/quick-add/copy-meal patterns
+- Happy Scale support docs — weight-smoothing algorithm tradeoffs
+- Apple Developer Forums (multiple threads) — standalone-PWA `SpeechRecognition` failure reports
+- WebKit Bug #239816, WebKit Blog (Safari 26 release notes) — Web Speech / secure-context standalone gaps
+- arXiv NutriBench, ScienceDirect ChatDiet — LLM nutrition-estimation hallucination research
+- Dexie.js GitHub Issues #275, #742, #889, #276 — store-deletion-during-upgrade bugs
 
-### Tertiary (LOW confidence — needs validation during build)
-- PT pain rating value for this user — assumed HIGH based on clinical rehab literature; needs user confirmation
-- Segment completion definition — no prior user data; needs explicit decision by owner
+### Tertiary (LOW confidence, flagged for validation)
+- General fuzzy-matching literature (DataLadder, WinPure) — used only to justify avoiding fuzzy dedupe, not to source an implementation
+- Medium/bagrounds.org — Chrome on-device speech reliability (inconsistent, single-source-ish reports)
+- Trophy.so — Apple ring psychology framing (third-party analysis, not primary source)
 
 ---
-
-*Research completed: 2026-04-19*
+*Research completed: 2026-08-08*
 *Ready for roadmap: yes*
