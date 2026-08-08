@@ -1,184 +1,90 @@
-# Requirements: HealthTracker
+# Requirements — Milestone v2.0 Duo Redesign
 
-**Defined:** 2026-04-19
-**Core Value:** Visual consistency feedback that makes logging feel like a win — the 4-segment day indicator and calendar streak loop drive daily return.
-
-## v1 Requirements
-
-Requirements for initial release. Each maps to exactly one roadmap phase.
-
-### Setup & Shell
-
-- [ ] **SETUP-01**: App installs as a PWA to iOS and Android home screens (manifest, icons, theme color)
-- [ ] **SETUP-02**: App functions fully offline after first load (service worker precaches app shell via Workbox)
-- [ ] **SETUP-03**: App calls `navigator.storage.persist()` at startup so iOS doesn't evict data after 7 days of inactivity
-- [x] **SETUP-04
-**: App renders in a dark, minimal, low-noise visual style as the default (and only) theme
-- [ ] **SETUP-05**: App loads to a useful landing screen (today's summary + calendar) in under 1s on a warm cache
-
-### Data Layer
-
-- [x] **DATA-01
-**: IndexedDB schema is versioned from day one via Dexie `db.version(1).stores(...)` with an append-only migration policy
-- [x] **DATA-02
-**: A single `dayKey` utility (`YYYY-MM-DD` in local time, built from `getFullYear/Month/Date`) is the sole source for day identity across all stores
-- [x] **DATA-03
-**: Object stores exist for: `foods`, `mealEntries`, `ptTemplates`, `ptSessions`, `stepEntries`, `liftCheckins`, `goals` (singleton)
-- [x] **DATA-04
-**: Food photos are stored in OPFS (not as blobs indexed inside IndexedDB); `foods` records hold a `photoKey` filename reference only
-- [x] **DATA-05
-**: Before writing to OPFS, each uploaded photo is resized client-side to ≤800×800 at ~70% JPEG quality
-
-### PT (Physical Therapy)
-
-- [ ] **PT-01**: User can create, edit, and delete PT exercise definitions (name, optional description, default target sets/reps or duration)
-- [ ] **PT-02**: User can create, edit, and delete PT routine templates — a named list of exercises with target sets/reps per exercise
-- [ ] **PT-03**: User can start a PT session from a template, which pre-populates the session with the template's exercises
-- [ ] **PT-04**: User can log actual sets/reps (or duration) per exercise in a session, tick each exercise off as complete, and save
-- [ ] **PT-05**: User can add a freeform notes field to each PT session (how it felt, what hurt, etc.)
-- [ ] **PT-06**: User can record an optional 0–5 pain/difficulty rating on each PT session
-- [ ] **PT-07**: When logging a session, the previous session's actuals for each exercise are visible for reference
-
-### Food & Macros
-
-- [ ] **FOOD-01**: User can add a new food to the library: name, calories, protein (g), carbs (g), fat (g), serving size label, optional photo
-- [ ] **FOOD-02**: User can edit and delete foods in the library
-- [ ] **FOOD-03**: User can log a meal entry: pick a food from the library, enter number of servings, assign to a meal bucket (Breakfast/Lunch/Dinner/Snack), tied to today's dayKey by default
-- [ ] **FOOD-04**: The meal-log screen shows a "Recent" section surfacing the most recently logged foods for one-tap re-log with previous serving size pre-filled
-- [ ] **FOOD-05**: The meal-log screen shows a "Frequent" section surfacing foods logged most often
-- [ ] **FOOD-06**: Each meal entry denormalizes computed macro totals at write time (no runtime joins for day totals)
-- [ ] **FOOD-07**: The day view shows live-updating progress bars for calories, protein, carbs, and fat against configured daily targets
-- [ ] **FOOD-08**: User can edit and delete meal entries
-
-### Steps
-
-- [ ] **STEPS-01**: User can enter a step count for a given day (default: today) — one record per day, upsert semantics
-- [ ] **STEPS-02**: The day view shows a progress bar for steps toward the configured daily step goal
-
-### Lifts (Check-In Only)
-
-- [ ] **LIFT-01**: User can tap a single "Lifted today" toggle on the day view (stores dayKey + boolean)
-- [ ] **LIFT-02**: User can add an optional short note alongside the lift check-in
-
-### Streak Calendar (Core Motivator)
-
-- [ ] **STREAK-01**: Each day is rendered as a 4-segment indicator (quadrants: PT / meals / steps / lift)
-- [ ] **STREAK-02**: A quadrant fills when any log exists for that day in its area (≥1 PT session, ≥1 meal entry, any step record, lift check-in = yes)
-- [ ] **STREAK-03**: A day is rendered as "complete" (all 4 filled) only when all four quadrant conditions are met
-- [ ] **STREAK-04**: The calendar renders the current month in a month-at-a-time grid with prev/next month navigation
-- [ ] **STREAK-05**: Calendar cells are neutral (not red/punitive) for days with zero logs; partial fills read as positive progress
-- [ ] **STREAK-06**: Tapping a calendar day opens that day's detail view (all four areas + logs + totals)
-- [ ] **STREAK-07**: The calendar screen displays current streak count (consecutive "complete" days) alongside the grid
-
-### Settings (Goals)
-
-- [ ] **SET-01**: User can set daily targets for calories, protein, carbs, fat, and steps in a Settings screen
-- [ ] **SET-02**: Target changes take effect immediately across progress bars and day views (no reload)
-- [ ] **SET-03**: Goal changes are non-destructive to historical logs (historical days use their then-current targets or display against current targets consistently per decision made at build time — locked once chosen)
-
-### Backup
-
-- [ ] **BACK-01**: User can export all data as a single JSON file (envelope with `schemaVersion`, `exportedAt`, `appVersion`, `data`, and base64-encoded `photos` map) via a Settings button
-- [ ] **BACK-02**: The export flow uses `<a download>` to work on iOS home-screen PWAs (no `showSaveFilePicker` dependency)
+Defined 2026-08-08. v1.0 requirements (SETUP, DATA, PT, FOOD-01..10, STEPS, LIFT, SET-01..03, STREAK, BACK-01..02) are archived in MILESTONES.md; PT and STEPS are retired in v2.
 
 ## v2 Requirements
 
-Deferred to future release. Tracked but not in current roadmap.
+### Data Migration & Feature Removal (MIGR)
 
-### Backup (Restore Half)
+- [ ] **MIGR-01**: Existing v1 data (foods, meal entries, lift check-ins, goals) carries into the v2 schema with no data loss (Dexie `version(2)` append-only migration; lift check-ins migrate into the generalized daily check-in store)
+- [ ] **MIGR-02**: PT and steps features are fully removed from the UI and services; their v1 stores remain declared and untouched (orphaned, per Dexie safety guidance)
+- [ ] **MIGR-03**: The `foods` store gains auto-library fields (`normalizedName`, `usageCount`, `lastUsedAt`, serving qty/unit, parse source) backfilled from existing meal history so the library is warm on day one
 
-- **BACK-03**: User can import a previously exported JSON backup; import validates `schemaVersion` and rejects files from newer schemas; import is destructive-replace with an explicit confirmation step
+### AI Food Entry (FOOD — continues v1 numbering)
 
-### History & Insights
+- [ ] **FOOD-11**: User can type a freeform food description (item, quantity, and any nutrition facts they know, e.g. "200g chicken, 31g protein per 100g") and have calories + macros computed by AI (Claude Haiku, browser-direct with on-device API key, structured JSON output)
+- [ ] **FOOD-12**: User can dictate the same description by voice where the platform supports it (Web Speech API, feature-detected and hidden in installed iOS PWAs; typing is first-class, never a degraded path)
+- [ ] **FOOD-13**: Parsed results always land in an editable confirm form (name, qty, unit, calories, macros) — nothing is saved without an explicit confirm tap; an arithmetic-consistency check flags suspicious macro math
+- [ ] **FOOD-14**: When offline or no API key is set, a structured local entry format (e.g. "150g @ 31p 0c 4f /100g") computes macros deterministically on-device through the same confirm form
+- [ ] **FOOD-15**: Every confirmed item is saved to the library automatically (deduped by normalized name, exact-match only) — there is no manual "create food" flow
+- [ ] **FOOD-16**: User can re-log a repeat item with one tap (recent + frequent surfacing, last-used serving prefilled), guarded against accidental double-logging
+- [ ] **FOOD-17**: Daily tab shows live calorie + macro totals against targets
 
-- **INSIGHT-01**: Per-exercise PT history chart (actuals over time) once enough sessions exist
-- **INSIGHT-02**: Weekly macro summary view
-- **INSIGHT-03**: Year-view heatmap (once a full year of data exists)
-- **INSIGHT-04**: Pain/difficulty trend chart over time
+### Training Check-offs (TRAIN)
 
-### Food Power-User
+- [ ] **TRAIN-01**: User can check off "lifted" for the day with one tap (toggleable off)
+- [ ] **TRAIN-02**: User can check off "did cardio" for the day with one tap (toggleable off)
+- [ ] **TRAIN-03**: Check-off records carry a `source` field (`manual` now, `hevy` later) so future Hevy API sync can set them without schema change
 
-- **FOOD-09**: Meal templates / combos (e.g., "my usual breakfast") with one-tap re-log
-- **FOOD-10**: Copy meals from a prior day to today
+### Weight Tracking (WEIGHT)
 
-### Misc
+- [ ] **WEIGHT-01**: User can log body weight for a day (single number, editable, one entry per dayKey)
+- [ ] **WEIGHT-02**: Weight history renders as a chart with raw entries plus an EMA-smoothed trend line
 
-- **SETUP-06**: In-app service-worker update prompt ("new version available — reload")
-- **BACK-04**: Auto-prompt weekly for export if no export has happened recently
+### Daily Closure Loop (CLOSE)
+
+- [ ] **CLOSE-01**: A day "closes" when food is logged (any entry) AND lift AND cardio are addressed for that day — computed by a closure service replacing v1's streak service
+- [ ] **CLOSE-02**: The Daily tab shows today's closure state as a ring-style visual that fills per component and celebrates with a satisfying animation when the day closes (reduced-motion respected)
+- [ ] **CLOSE-03**: User can see closure history at a glance (month/heatmap view) and a current closure streak count
+
+### Dashboard (DASH)
+
+- [ ] **DASH-01**: Dashboard shows weight progress over time (chart from WEIGHT-02, with range selection weeks/months)
+- [ ] **DASH-02**: Dashboard shows eating trends over time — daily calories vs target and adherence (on-target days) across weeks
+- [ ] **DASH-03**: Dashboard shows training consistency over time — lift and cardio frequency per week/month
+- [ ] **DASH-04**: App is reorganized into a two-tab IA: Daily (today's closure + all logging) and Dashboard (long-term trends), with Settings accessible
+
+### Settings (SET — continues v1 numbering)
+
+- [ ] **SET-04**: User can paste and store their Anthropic API key on-device (localStorage, never in Dexie), with a clear no-key state that still lets the app work via the local parser
+- [ ] **SET-05**: Daily calorie/macro targets remain configurable (carried from v1, restyled)
+
+### Backup (BACK — continues v1 numbering)
+
+- [ ] **BACK-03**: User can import a previously exported JSON backup to restore data (current schemaVersion only; old files rejected with a clear message)
+- [ ] **BACK-05**: JSON export covers all v2 stores (weight, check-ins, library) and never includes the API key
+
+### Visual Redesign (UI)
+
+- [ ] **UI-01**: All screens rebuilt to a clean, sleek, Apple-design-informed system (per `.agents/skills/apple-design`), coherent across Daily, Dashboard, and Settings
+- [ ] **UI-02**: Motion polish throughout (ring closure, micro-interactions, sheet transitions) per `improve-animations` guidance, performant on mid-range phones and respecting `prefers-reduced-motion`
+
+## Future Requirements (deferred)
+
+| ID | Requirement | Why deferred |
+|----|-------------|--------------|
+| TRAIN-04 | Hevy API auto-sync marks lift/cardio automatically | Requires Hevy Pro (neither user has it); TRAIN-03 keeps the door open |
+| FOOD-18 | Multi-item freeform parse ("chicken and rice with veggies") | v2.x refinement; single-item parse first |
+| DASH-05 | Adherence-band tuning / on-target indicators beyond defaults | Tune after real usage data exists |
+| BACK-04 | Weekly export auto-prompt | Carried from v1 deferral |
 
 ## Out of Scope
 
-Explicitly excluded. Documented to prevent scope creep.
-
-| Feature | Reason |
-|---------|--------|
-| Full lift tracking (sets/reps/weight) | User has another platform for this; duplicate entry defeats the purpose |
-| User accounts / authentication | Solo personal tool; auth adds friction with no payoff |
-| Cloud sync / hosted backend | Fully-local IndexedDB is sufficient; backend breaks offline-first philosophy |
-| Apple Health / Google Fit integration | Manual entry is acceptable for v1 and avoids platform-specific plumbing |
-| Barcode scanning | User explicitly preferred custom-library model; barcode adds camera + lookup API complexity |
-| Third-party nutrition API (USDA / Nutritionix) | User explicitly preferred self-added foods; external dependency breaks offline-only philosophy |
-| Social / sharing / leaderboards | Solo motivation tool, not a social product |
-| Hydration / sleep / mood tracking | Scope-creep risk; only add if the streak loop demands more segments |
-| Bodyweight / measurements | Not a stated motivator; can be revisited post-v1 if it aids the cut |
-| Notification reminders | Research flagged notification spam as a top abandon trigger; rely on home-screen visibility instead |
-| Streak freeze / grace-day / punitive "streak broken" UI | Research-backed anti-pattern for injury-recovery users; missed days are neutral, not punished |
-| Badges / achievements / XP | Gamification overload is a documented abandon trigger for serious trackers |
-| SSR / Next.js | SPA is sufficient; SSR complicates service worker lifecycle |
+| Item | Reasoning |
+|------|-----------|
+| Shared data / seeing each other's rings | Users explicitly chose individual installs; keeps zero-backend architecture |
+| Backend, auth, cloud sync | Two independent local installs |
+| Nutrition database / barcode search | AI parse + auto-library covers entry friction without external DB dependency |
+| Photo-based food recognition | Anti-feature per research; high complexity, low reliability |
+| Fuzzy/semantic library auto-merge | False-positive risk corrupts the library; exact normalized match only |
+| Full lift tracking (sets/reps/weight) | Tracked in Hevy |
+| PT rehab tracking, steps tracking | Retired v1 features |
+| Notifications, streak freezes, social | Scope discipline; closure loop is the motivator |
+| Weight goal projections / configurable smoothing | Anti-feature for a 2-user app; single EMA default |
 
 ## Traceability
 
-Which phases cover which requirements. Populated by the roadmapper.
+<!-- Filled by roadmap creation. -->
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| SETUP-01 | Phase 1 | Pending |
-| SETUP-02 | Phase 1 | Pending |
-| SETUP-03 | Phase 1 | Pending |
-| SETUP-04 | Phase 1 | Pending |
-| SETUP-05 | Phase 1 | Pending |
-| DATA-01 | Phase 1 | Pending |
-| DATA-02 | Phase 1 | Pending |
-| DATA-03 | Phase 1 | Pending |
-| DATA-04 | Phase 1 | Pending |
-| DATA-05 | Phase 1 | Pending |
-| PT-01 | Phase 2 | Pending |
-| PT-02 | Phase 2 | Pending |
-| PT-03 | Phase 2 | Pending |
-| PT-04 | Phase 2 | Pending |
-| PT-05 | Phase 2 | Pending |
-| PT-06 | Phase 2 | Pending |
-| PT-07 | Phase 2 | Pending |
-| FOOD-01 | Phase 2 | Pending |
-| FOOD-02 | Phase 2 | Pending |
-| FOOD-03 | Phase 2 | Pending |
-| FOOD-04 | Phase 2 | Pending |
-| FOOD-05 | Phase 2 | Pending |
-| FOOD-06 | Phase 2 | Pending |
-| FOOD-07 | Phase 2 | Pending |
-| FOOD-08 | Phase 2 | Pending |
-| STEPS-01 | Phase 2 | Pending |
-| STEPS-02 | Phase 2 | Pending |
-| LIFT-01 | Phase 2 | Pending |
-| LIFT-02 | Phase 2 | Pending |
-| STREAK-01 | Phase 3 | Pending |
-| STREAK-02 | Phase 3 | Pending |
-| STREAK-03 | Phase 3 | Pending |
-| STREAK-04 | Phase 3 | Pending |
-| STREAK-05 | Phase 3 | Pending |
-| STREAK-06 | Phase 3 | Pending |
-| STREAK-07 | Phase 3 | Pending |
-| SET-01 | Phase 2 | Pending |
-| SET-02 | Phase 2 | Pending |
-| SET-03 | Phase 2 | Pending |
-| BACK-01 | Phase 4 | Pending |
-| BACK-02 | Phase 4 | Pending |
-
-**Coverage:**
-- v1 requirements: 41 total
-- Mapped to phases: 41
-- Unmapped: 0 ✓
-
----
-*Requirements defined: 2026-04-19*
-*Last updated: 2026-04-19 after roadmap creation*
+| REQ-ID | Phase |
+|--------|-------|
