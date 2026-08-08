@@ -143,7 +143,7 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
           <p className="text-xs text-muted italic">{draft.assumptions}</p>
         )}
         {suspicious && (
-          <p className="flex items-start gap-1.5 text-xs text-amber-400" role="alert">
+          <p className="flex items-start gap-1.5 text-xs text-warn" role="alert">
             <TriangleAlert size={14} className="shrink-0 mt-px" aria-hidden />
             Calories don&apos;t match the macros — double-check these numbers.
           </p>
@@ -217,7 +217,7 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
         </Button>
       </form>
       {error && (
-        <p className="text-xs text-amber-400" role="alert">
+        <p className="text-xs text-warn" role="alert">
           {error}
         </p>
       )}

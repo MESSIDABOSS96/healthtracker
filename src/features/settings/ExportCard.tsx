@@ -167,7 +167,7 @@ export function ExportCard() {
         </Button>
       </div>
       {state === 'error' && (
-        <p className="text-xs mt-2" style={{ color: '#ef4444' }}>
+        <p className="text-xs mt-2" style={{ color: 'var(--danger)' }}>
           Export failed — try again. If it keeps failing, your library may be too large for in-memory encoding.
         </p>
       )}

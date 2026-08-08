@@ -9,7 +9,9 @@ import { addDays, keyToDate, dateToKey } from '@/lib/dayKey';
 import { getAllWeights } from '@/services/weight.svc';
 import { getCaloriesByDay } from '@/services/meals.svc';
 import { getCheckinsInRange } from '@/services/checkins.svc';
+import { getLongTermGoals, computeWeightGoalProgress } from '@/services/longTermGoals.svc';
 import { useGoals } from '@/features/settings/hooks';
+import { GoalProgressCard } from '@/features/dashboard/GoalProgressCard';
 import { useClosureRange, useClosureStreak } from '@/features/closure/hooks';
 import { WeightChart } from '@/features/dashboard/WeightChart';
 import { CaloriesChart, type CaloriesDatum } from '@/features/dashboard/CaloriesChart';
@@ -40,6 +42,7 @@ export function DashboardScreen() {
   const allWeights = useLiveQuery(() => getAllWeights(), []);
   const caloriesByDay = useLiveQuery(() => getCaloriesByDay(startKey, todayKey), [startKey, todayKey]);
   const checkins = useLiveQuery(() => getCheckinsInRange(startKey, todayKey), [startKey, todayKey]);
+  const longTermGoals = useLiveQuery(() => getLongTermGoals(), []);
 
   const gridStartKey = addDays(todayKey, -(12 * 7));
   const closures = useClosureRange(gridStartKey, todayKey);
@@ -79,6 +82,18 @@ export function DashboardScreen() {
     }
   }
 
+  // Long-term goal benchmarking. Progress always uses the FULL weight history
+  // (the goal is anchored to its own start date, not the selected range).
+  const goalProgress = computeWeightGoalProgress(longTermGoals, allWeights ?? [], todayKey);
+  const currentWeekStart = weekStart(todayKey);
+  const thisWeek = (checkins ?? []).reduce(
+    (acc, c) => {
+      if (c.dayKey >= currentWeekStart) acc[c.kind] += 1;
+      return acc;
+    },
+    { lift: 0, cardio: 0 },
+  );
+
   const rangedWeights = (allWeights ?? []).filter(w => range === 'all' || w.dayKey >= startKey);
   const weightStartKey =
     range === 'all'
@@ -108,6 +123,13 @@ export function DashboardScreen() {
           </button>
         ))}
       </div>
+
+      <GoalProgressCard
+        goals={longTermGoals}
+        progress={goalProgress}
+        unit={goals?.weightUnit ?? 'lb'}
+        thisWeek={thisWeek}
+      />
 
       <WeightChart
         allWeights={allWeights ?? []}

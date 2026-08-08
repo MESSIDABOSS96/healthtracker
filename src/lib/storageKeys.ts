@@ -10,3 +10,5 @@ export const LAST_EXPORTED_KEY = 'healthtracker:lastExportedAt';
 // Anthropic API key lives in localStorage DELIBERATELY — export.svc only reads
 // Dexie tables, so the key can never leak into a backup JSON.
 export const API_KEY_KEY = 'healthtracker:anthropicApiKey';
+// Theme preference — read by the pre-paint inline script in index.html too.
+export const THEME_KEY = 'healthtracker:theme';

@@ -24,6 +24,8 @@ React 19 + Vite 7 + TypeScript + Dexie 4 (+ `useLiveQuery`) + Tailwind CSS 4 + `
 | Auto-library | `src/services/food.svc.ts` (`logParsedFood`, dedupe on `normalizedName`), `normalizeFoodName.ts` |
 | Closure model | `src/services/closure.svc.ts` — day closes when food logged + lift + cardio checked (any-log semantics) |
 | Check-offs / weight | `checkins.svc.ts` (row existence = checked, `source` field for future Hevy sync), `weight.svc.ts` (EMA trend) |
+| Long-term goals | `longTermGoals.svc.ts` — goal weight (start snapshotted on first save), target date, weekly lift/cardio targets; projection math from the EMA |
+| Theming | `lib/theme.ts` + `styles/tokens.css` (`:root` light, `.dark` dark) + pre-paint script in `index.html` |
 | API key | `src/lib/apiKey.ts` — localStorage ONLY, never Dexie (keeps it out of exports) |
 | Screens | `/daily` (ring + logging), `/dashboard` (trends, lazy), `/day/:dayKey`, `/settings` |
 | Backup | `export.svc.ts` / `import.svc.ts` — v2 envelope, current schemaVersion only on import |
@@ -41,7 +43,11 @@ React 19 + Vite 7 + TypeScript + Dexie 4 (+ `useLiveQuery`) + Tailwind CSS 4 + `
 
 ## Design
 
-Dark-only, zinc base + green accent (`src/styles/tokens.css`). Ring segment colors: `--ring-food/lift/cardio`; chart colors `--chart-*` are dark-surface-validated — don't swap them casually. Design skills live in `.agents/skills/` (apple-design, pick-ui-library, improve-animations) — consult for UI/motion work. Respect `prefers-reduced-motion` in every animation.
+Zinc base + green accent, **light and dark** (`src/styles/tokens.css` — `:root` is light, `.dark` overrides). Theme preference is system/light/dark in Settings; `index.html` applies it pre-paint to avoid a flash — keep that inline script in sync with `lib/theme.ts`.
+
+**Never hardcode a color in a component.** Use tokens: `--text/muted/bg/surface/border/accent/track/danger/warn`, `--ring-*` (closure ring), `--chart-*` (Recharts series). Ring and chart colors are defined per theme and each set is validated against its own surface — re-run the dataviz palette validator before changing either. Design skills live in `.agents/skills/` (apple-design, pick-ui-library, improve-animations). Respect `prefers-reduced-motion` in every animation.
+
+Mobile-first: the shell is capped at `max-w-md` with a bottom tab bar and safe-area insets — it's a phone PWA.
 
 ## Explicitly Out of Scope
 

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -14,6 +14,24 @@
     <meta name="apple-mobile-web-app-title" content="HealthTracker" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <title>HealthTracker</title>
+    <!-- Pre-paint theme application — prevents a flash of the wrong theme.
+         Mirrors src/lib/theme.ts; keep the storage key and class in sync. -->
+    <script>
+      (function () {
+        try {
+          var pref = localStorage.getItem('healthtracker:theme') || 'system';
+          var dark =
+            pref === 'dark' ||
+            (pref === 'system' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.classList.toggle('dark', dark);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', dark ? '#09090b' : '#fafafa');
+        } catch (e) {
+          /* localStorage unavailable — fall through to CSS defaults */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

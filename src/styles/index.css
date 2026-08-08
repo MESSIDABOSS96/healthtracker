@@ -10,10 +10,17 @@
   --color-muted:   var(--muted);
   --color-text:    var(--text);
   --color-accent:  var(--accent);
+  --color-track:   var(--track);
+  --color-danger:  var(--danger);
+  --color-warn:    var(--warn);
   --color-ring-food:   var(--ring-food);
   --color-ring-lift:   var(--ring-lift);
   --color-ring-cardio: var(--ring-cardio);
 }
+
+/* Native form controls / scrollbars follow the active theme */
+:root { color-scheme: light; }
+.dark { color-scheme: dark; }
 
 html {
   background-color: var(--bg);

@@ -134,3 +134,22 @@ export interface Goals {
   weightUnit?: WeightUnit; // default 'lb'
   updatedAt: number;
 }
+
+/**
+ * Long-term goals (v3) — the benchmark daily logging is measured against.
+ * Separate from the daily `Goals` singleton: different cadence, different
+ * lifecycle (a daily macro target changes often; a goal weight rarely does).
+ * `startWeight`/`startDayKey` are snapshotted when a weight goal is first set
+ * so progress is measured from the real starting point, not a moving window.
+ */
+export interface LongTermGoals {
+  id: string; // 'singleton'
+  targetWeight?: number;
+  startWeight?: number;
+  startDayKey?: string;
+  /** Optional deadline (dayKey) — enables on-track/behind assessment. */
+  targetDate?: string;
+  liftsPerWeek?: number;
+  cardioPerWeek?: number;
+  updatedAt: number;
+}

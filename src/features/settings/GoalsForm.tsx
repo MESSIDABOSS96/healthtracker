@@ -102,7 +102,7 @@ export function GoalsForm() {
             {...register('calories', { valueAsNumber: true })}
           />
           {errors.calories && (
-            <p id="goals-calories-error" className="text-xs" style={{ color: '#ef4444' }}>
+            <p id="goals-calories-error" className="text-xs" style={{ color: 'var(--danger)' }}>
               {errors.calories.message}
             </p>
           )}
@@ -120,7 +120,7 @@ export function GoalsForm() {
             {...register('proteinG', { valueAsNumber: true })}
           />
           {errors.proteinG && (
-            <p id="goals-protein-error" className="text-xs" style={{ color: '#ef4444' }}>
+            <p id="goals-protein-error" className="text-xs" style={{ color: 'var(--danger)' }}>
               {errors.proteinG.message}
             </p>
           )}
@@ -138,7 +138,7 @@ export function GoalsForm() {
             {...register('carbsG', { valueAsNumber: true })}
           />
           {errors.carbsG && (
-            <p id="goals-carbs-error" className="text-xs" style={{ color: '#ef4444' }}>
+            <p id="goals-carbs-error" className="text-xs" style={{ color: 'var(--danger)' }}>
               {errors.carbsG.message}
             </p>
           )}
@@ -156,7 +156,7 @@ export function GoalsForm() {
             {...register('fatG', { valueAsNumber: true })}
           />
           {errors.fatG && (
-            <p id="goals-fat-error" className="text-xs" style={{ color: '#ef4444' }}>
+            <p id="goals-fat-error" className="text-xs" style={{ color: 'var(--danger)' }}>
               {errors.fatG.message}
             </p>
           )}

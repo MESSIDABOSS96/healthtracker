@@ -5,6 +5,7 @@ import App from './App';
 import './styles/index.css';
 import { wireBeforeInstallPrompt } from './lib/installMode';
 import { LAST_OPENED_KEY, PREV_OPENED_KEY } from './lib/storageKeys';
+import { applyTheme, watchSystemTheme } from './lib/theme';
 import { seedGoalsIfAbsent } from './services/goals.svc';
 
 /**
@@ -20,8 +21,10 @@ import { seedGoalsIfAbsent } from './services/goals.svc';
  *   8. SW registration via vite-plugin-pwa virtual module (D-09 autoUpdate)
  */
 async function initApp(): Promise<void> {
-  // Step 1 — dark theme class (D-19).
-  document.documentElement.classList.add('dark');
+  // Step 1 — theme. index.html already applied the class pre-paint; this
+  // re-asserts it and subscribes to OS changes for the 'system' preference.
+  applyTheme();
+  watchSystemTheme();
 
   // Step 2 — read previous lastOpenedAt BEFORE overwriting it.
   const prev = localStorage.getItem(LAST_OPENED_KEY);

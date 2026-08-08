@@ -58,7 +58,7 @@ export async function importAll(json: string): Promise<ImportSummary> {
   const d = envelope.data;
   const arrays = [
     d.foods, d.mealEntries, d.dailyCheckins, d.weightEntries, d.goals,
-    d.ptTemplates, d.ptSessions, d.stepEntries, d.liftCheckins,
+    d.longTermGoals, d.ptTemplates, d.ptSessions, d.stepEntries, d.liftCheckins,
   ];
   if (arrays.some(a => !Array.isArray(a))) {
     throw new ImportError('Backup file is missing expected data sections.');
@@ -80,13 +80,14 @@ export async function importAll(json: string): Promise<ImportSummary> {
     'rw',
     [
       db.foods, db.mealEntries, db.dailyCheckins, db.weightEntries, db.goals,
-      db.ptTemplates, db.ptSessions, db.stepEntries, db.liftCheckins,
+      db.longTermGoals, db.ptTemplates, db.ptSessions, db.stepEntries, db.liftCheckins,
     ],
     async () => {
       await Promise.all([
         db.foods.clear(), db.mealEntries.clear(), db.dailyCheckins.clear(),
-        db.weightEntries.clear(), db.goals.clear(), db.ptTemplates.clear(),
-        db.ptSessions.clear(), db.stepEntries.clear(), db.liftCheckins.clear(),
+        db.weightEntries.clear(), db.goals.clear(), db.longTermGoals.clear(),
+        db.ptTemplates.clear(), db.ptSessions.clear(), db.stepEntries.clear(),
+        db.liftCheckins.clear(),
       ]);
       await Promise.all([
         db.foods.bulkPut(d.foods),
@@ -94,6 +95,7 @@ export async function importAll(json: string): Promise<ImportSummary> {
         db.dailyCheckins.bulkPut(d.dailyCheckins),
         db.weightEntries.bulkPut(d.weightEntries),
         db.goals.bulkPut(d.goals),
+        db.longTermGoals.bulkPut(d.longTermGoals),
         db.ptTemplates.bulkPut(d.ptTemplates),
         db.ptSessions.bulkPut(d.ptSessions),
         db.stepEntries.bulkPut(d.stepEntries),

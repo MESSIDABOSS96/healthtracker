@@ -16,7 +16,7 @@ import { loadPhoto } from '@/lib/photoStore';
 import { APP_VERSION } from '@/lib/version';
 import type {
   PTTemplate, PTSession, Food, MealEntry, StepEntry, LiftCheckin,
-  DailyCheckin, WeightEntry, Goals,
+  DailyCheckin, WeightEntry, Goals, LongTermGoals,
 } from '@/db/schema';
 
 export interface ExportEnvelope {
@@ -29,6 +29,7 @@ export interface ExportEnvelope {
     dailyCheckins: DailyCheckin[];
     weightEntries: WeightEntry[];
     goals: Goals[];
+    longTermGoals: LongTermGoals[];
     // Orphaned v1 stores — carried in backups for completeness.
     ptTemplates: PTTemplate[];
     ptSessions: PTSession[];
@@ -54,7 +55,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
 
 export async function exportAll(): Promise<ExportResult> {
   const [
-    foods, mealEntries, dailyCheckins, weightEntries, goals,
+    foods, mealEntries, dailyCheckins, weightEntries, goals, longTermGoals,
     ptTemplates, ptSessions, stepEntries, liftCheckins,
   ] = await Promise.all([
     db.foods.toArray(),
@@ -62,6 +63,7 @@ export async function exportAll(): Promise<ExportResult> {
     db.dailyCheckins.toArray(),
     db.weightEntries.toArray(),
     db.goals.toArray(),
+    db.longTermGoals.toArray(),
     db.ptTemplates.toArray(),
     db.ptSessions.toArray(),
     db.stepEntries.toArray(),
@@ -88,7 +90,7 @@ export async function exportAll(): Promise<ExportResult> {
     exportedAt: new Date().toISOString(),
     appVersion: APP_VERSION,
     data: {
-      foods, mealEntries, dailyCheckins, weightEntries, goals,
+      foods, mealEntries, dailyCheckins, weightEntries, goals, longTermGoals,
       ptTemplates, ptSessions, stepEntries, liftCheckins,
     },
     photos,

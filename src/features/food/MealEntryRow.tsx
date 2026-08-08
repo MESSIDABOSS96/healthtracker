@@ -120,7 +120,7 @@ export function MealEntryRow({ entry, food }: MealEntryRowProps) {
           type="button"
           variant="ghost"
           onClick={handleDelete}
-          style={{ color: '#ef4444' }}
+          style={{ color: 'var(--danger)' }}
         >
           Delete
         </Button>

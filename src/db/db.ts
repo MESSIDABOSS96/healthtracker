@@ -10,6 +10,7 @@ import type {
   DailyCheckin,
   WeightEntry,
   Goals,
+  LongTermGoals,
 } from './schema';
 import { normalizeFoodName } from '@/lib/normalizeFoodName';
 
@@ -24,6 +25,11 @@ import { normalizeFoodName } from '@/lib/normalizeFoodName';
  *     stepEntries  (dayKey PK — natural key, one record per day)
  *     liftCheckins (dayKey PK — natural key, one record per day)
  *     goals        (id PK — singleton: id === 'singleton')
+ *
+ *   v3 (2026-08): Long-term goals.
+ *     + longTermGoals (id PK — singleton: id === 'singleton')
+ *       Goal weight + optional target date + weekly training frequency targets.
+ *       Pure additive store; no data transformation, so no upgrade() needed.
  *
  *   v2 (2026-08): Duo redesign.
  *     + weightEntries (dayKey PK — one weigh-in per day)
@@ -62,6 +68,7 @@ export class HealthTrackerDB extends Dexie {
   dailyCheckins!: Table<DailyCheckin, [string, string]>;
   weightEntries!: Table<WeightEntry, string>;
   goals!: Table<Goals, string>;
+  longTermGoals!: Table<LongTermGoals, string>;
 
   constructor() {
     super('HealthTrackerDB');
@@ -116,6 +123,11 @@ export class HealthTrackerDB extends Dexie {
           f.parseSource = 'legacy';
         });
       });
+
+    // Purely additive — no upgrade() needed.
+    this.version(3).stores({
+      'longTermGoals': 'id',
+    });
   }
 }
 

@@ -1,5 +1,5 @@
 // src/components/ProgressBar.tsx
-// UI-SPEC §"Progress bar component": 8px height, rounded-full, bg-white/[0.08] track, bg-accent fill.
+// 8px height, rounded-full, themed track (--track), bg-accent fill.
 // D-16 zero-target sentinel: when max === 0, render consumed-only, no bar in DOM.
 // Fill width updates instantly — no CSS tween property (anti-motion policy per UI-SPEC §"Interaction & Motion").
 
@@ -35,7 +35,7 @@ export function ProgressBar({ value, max, label, ariaLabel, className }: Progres
         aria-valuemin={0}
         aria-valuemax={max}
         aria-label={ariaLabel ?? `${label ?? ''} progress`.trim()}
-        className="relative h-2 flex-1 rounded-full bg-white/[0.08] overflow-hidden"
+        className="relative h-2 flex-1 rounded-full bg-track overflow-hidden"
       >
         <div className="h-full rounded-full bg-accent" style={{ width: `${percent}%` }} />
       </div>

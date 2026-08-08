@@ -48,7 +48,7 @@ export function ApiKeyCard() {
             <Button type="button" variant="ghost" onClick={() => setEditing(true)}>
               Replace
             </Button>
-            <Button type="button" variant="ghost" onClick={remove} style={{ color: '#ef4444' }}>
+            <Button type="button" variant="ghost" onClick={remove} style={{ color: 'var(--danger)' }}>
               Remove
             </Button>
           </div>

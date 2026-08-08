@@ -103,7 +103,7 @@ export function ImportCard() {
       {message && (
         <p
           className="text-xs"
-          style={{ color: phase === 'error' ? '#ef4444' : 'var(--muted)' }}
+          style={{ color: phase === 'error' ? 'var(--danger)' : 'var(--muted)' }}
           role={phase === 'error' ? 'alert' : undefined}
         >
           {message}
