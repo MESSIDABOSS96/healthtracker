@@ -84,7 +84,33 @@ Defined 2026-08-08. v1.0 requirements (SETUP, DATA, PT, FOOD-01..10, STEPS, LIFT
 
 ## Traceability
 
-<!-- Filled by roadmap creation. -->
-
 | REQ-ID | Phase |
 |--------|-------|
+| MIGR-01 | Phase 5 - Data Layer Migration |
+| MIGR-02 | Phase 5 - Data Layer Migration |
+| MIGR-03 | Phase 5 - Data Layer Migration |
+| TRAIN-01 | Phase 6 - Check-offs, Weight & Targets |
+| TRAIN-02 | Phase 6 - Check-offs, Weight & Targets |
+| TRAIN-03 | Phase 6 - Check-offs, Weight & Targets |
+| WEIGHT-01 | Phase 6 - Check-offs, Weight & Targets |
+| WEIGHT-02 | Phase 6 - Check-offs, Weight & Targets |
+| SET-05 | Phase 6 - Check-offs, Weight & Targets |
+| FOOD-11 | Phase 7 - AI Food Parsing & Auto-Library |
+| FOOD-12 | Phase 7 - AI Food Parsing & Auto-Library |
+| FOOD-13 | Phase 7 - AI Food Parsing & Auto-Library |
+| FOOD-14 | Phase 7 - AI Food Parsing & Auto-Library |
+| FOOD-15 | Phase 7 - AI Food Parsing & Auto-Library |
+| FOOD-16 | Phase 7 - AI Food Parsing & Auto-Library |
+| FOOD-17 | Phase 7 - AI Food Parsing & Auto-Library |
+| SET-04 | Phase 7 - AI Food Parsing & Auto-Library |
+| CLOSE-01 | Phase 8 - Closure Loop, Dashboard & Redesign |
+| CLOSE-02 | Phase 8 - Closure Loop, Dashboard & Redesign |
+| CLOSE-03 | Phase 8 - Closure Loop, Dashboard & Redesign |
+| DASH-01 | Phase 8 - Closure Loop, Dashboard & Redesign |
+| DASH-02 | Phase 8 - Closure Loop, Dashboard & Redesign |
+| DASH-03 | Phase 8 - Closure Loop, Dashboard & Redesign |
+| DASH-04 | Phase 8 - Closure Loop, Dashboard & Redesign |
+| UI-01 | Phase 8 - Closure Loop, Dashboard & Redesign |
+| UI-02 | Phase 8 - Closure Loop, Dashboard & Redesign |
+| BACK-03 | Phase 9 - Backup & Release Verification |
+| BACK-05 | Phase 9 - Backup & Release Verification |

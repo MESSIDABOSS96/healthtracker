@@ -1,97 +1,104 @@
 # Roadmap: HealthTracker
 
-## Overview
+## v1.0 — Solo Tracker (Closed 2026-08-08)
 
-Four phases deliver a fully-local offline-first PWA from a bare directory to a working streak calendar loop. Phase 1 locks in the data-layer foundations (Dexie schema, dayKey, OPFS, PWA shell) that everything else builds on. Phase 2 delivers all four tracking slices in parallel-friendly plans — PT, food/macros, steps, and lifts — plus the goals settings screen. Phase 3 closes the motivational loop with the 4-segment calendar and streak count. Phase 4 adds JSON export and any remaining PWA polish, completing the data-safety story.
+Phases 1–4 shipped the local-first foundation (Dexie/OPFS/PWA shell), all four v1 tracking slices, the 4-segment streak calendar, and JSON export. Full detail archived in `.planning/MILESTONES.md`. v2.0 reuses the data-layer conventions and rebuilds most of the presentation layer.
+
+## v2.0 — Duo Redesign
+
+### Overview
+
+Five phases take HealthTracker from a solo PT/food/steps/lift tracker to a two-person food+training+weight tracker with AI-parsed entry and an Apple-ring-style closure loop. Phase 5 is the highest-stakes step — an append-only schema migration that must preserve all v1 history while retiring PT/steps. Phases 6 and 7 build the two new logging surfaces (check-offs/weight, then AI food parsing) low-risk-before-high-risk. Phase 8 is the payoff: the closure ring, the Dashboard, and the full visual redesign, once real data exists to visualize. Phase 9 closes the data-safety story (export/import) and verifies the schema-breaking upgrade end-to-end on both users' installed apps.
+
+### Phase Numbering
+
+**Integer phases (5, 6, 7...):** Continue numbering from v1.0's Phase 1–4; v2.0 starts at Phase 5.
+**Decimal phases (5.1, 5.2):** Urgent insertions (marked with INSERTED). Decimal phases appear between their surrounding integers in numeric order.
 
 ## Phases
 
-**Phase Numbering:**
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
-
-Decimal phases appear between their surrounding integers in numeric order.
-
-- [ ] **Phase 1: Foundation** - Scaffold + Dexie schema + dayKey + OPFS + PWA shell + dark theme
-- [ ] **Phase 2: Tracking Slices** - PT templates/sessions, food library/macros, steps, lift check-in, goals settings
-- [ ] **Phase 3: Streak Loop** - 4-segment DayCell, calendar month grid, day detail view, streak count
-- [ ] **Phase 4: Backup & Polish** - JSON export, PWA install/icon polish, data-safety UX
+- [ ] **Phase 5: Data Layer Migration** - Schema v2 (`dailyCheckins`, `weightEntries`, evolved `foods`), lift-check-in migration, library backfill, PT/steps removed from UI
+- [ ] **Phase 6: Check-offs, Weight & Targets** - One-tap lift/cardio check-offs, daily weight entry + trend chart, configurable calorie/macro targets
+- [ ] **Phase 7: AI Food Parsing & Auto-Library** - Freeform type/voice food entry, AI + local-fallback parsing, confirm-before-save, self-building library with one-tap re-log
+- [ ] **Phase 8: Closure Loop, Dashboard & Redesign** - Ring-style daily closure with animation, closure history/streak, Dashboard trends, two-tab IA, full Apple-design-informed visual rebuild
+- [ ] **Phase 9: Backup & Release Verification** - JSON export/import for v2 schema, no API-key leakage, end-to-end upgrade verification on both installed apps
 
 ## Phase Details
 
-### Phase 1: Foundation
-**Goal**: The app's non-negotiable infrastructure exists and is correct — safe local storage, correct date math, offline delivery, and dark base layout. No feature can be built without this being solid.
-**Depends on**: Nothing (first phase)
-**Requirements**: SETUP-01, SETUP-02, SETUP-03, SETUP-04, SETUP-05, DATA-01, DATA-02, DATA-03, DATA-04, DATA-05
+### Phase 5: Data Layer Migration
+**Goal**: The v2 schema exists with all v1 history preserved and PT/steps fully removed from the user-facing app, so every later phase builds on a stable, correct data layer.
+**Depends on**: Nothing new (builds on v1.0 Phase 1 foundation — Dexie schema, dayKey, OPFS, PWA shell)
+**Requirements**: MIGR-01, MIGR-02, MIGR-03
 **Success Criteria** (what must be TRUE):
-  1. App installs to iOS and Android home screen from the browser and launches in standalone mode with no network connection after first load
-  2. All 7 Dexie object stores (`ptTemplates`, `ptSessions`, `foods`, `mealEntries`, `stepEntries`, `liftCheckins`, `goals`) exist in IndexedDB, versioned at v1, with the append-only migration convention documented in `db.ts` comments
-  3. `lib/dayKey.ts:todayKey()` returns the correct local `YYYY-MM-DD` string when called at 11:30pm in a UTC-5 context (verified by a unit test or console check)
-  4. Food photos can be saved to OPFS as resized ≤800×800 WebP blobs; `foods` records hold only the `photoKey` filename reference
-  5. App renders in dark mode with the base layout shell (top nav, bottom tab bar or equivalent) loading in under 1s from a warm service-worker cache
-**Plans**: 3 plans
-  - [x] 01-01-scaffold-shell-PLAN.md — Scaffold Vite 7 + React 19 + TS, Tailwind v4 tokens, shadcn/ui, hash routing, AppShell with bottom tab bar, Today/Calendar/Settings stubs per D-05
-  - [x] 01-02-data-layer-PLAN.md — Dexie v1 with 7 stores + append-only migration comment, dayKey.ts with 11:30pm UTC-5 smoke assertion, OPFS photoStore with WebP@80% resize pipeline
-  - [x] 01-03-pwa-startup-banners-PLAN.md — vite-plugin-pwa (generateSW + autoUpdate), manifest + icons + apple-touch-icon, initApp() startup (persist, lastOpenedAt, SW register), Install + Eviction banners, Settings version line, CLAUDE.md rule #5 update (JPEG→WebP)
+  1. Opening the app after the upgrade shows all pre-existing food logs, meals, and lift check-ins intact — lift check-ins now appear as generalized daily check-in records with no history gap.
+  2. PT and Steps no longer appear anywhere in the navigation, tabs, or logging flows — no path in the UI reaches them.
+  3. The food library shows correct usage counts and last-used dates for every pre-existing food item immediately after the upgrade runs, with no cold-start/empty library.
+  4. The schema upgrade completes without data loss or corruption when run against a device carrying real v1 history (verified by comparing exported row counts before and after).
+**Plans**: TBD
+
+### Phase 6: Check-offs, Weight & Targets
+**Goal**: Users can record lift/cardio check-offs and daily weight with minimal friction, and configure the calorie/macro targets that later phases will measure against.
+**Depends on**: Phase 5
+**Requirements**: TRAIN-01, TRAIN-02, TRAIN-03, WEIGHT-01, WEIGHT-02, SET-05
+**Success Criteria** (what must be TRUE):
+  1. User can tap once to mark "lifted" for today and tap again to undo it, with the state persisted under today's dayKey.
+  2. User can tap once to mark "did cardio" for today and tap again to undo it, independently of the lift check-off.
+  3. User can enter today's body weight as a single number, edit it, and never end up with more than one weight entry for the same day.
+  4. User can view a weight chart showing raw daily entries plus a smoothed (EMA) trend line across weeks.
+  5. User can open Settings and edit daily calorie/protein/carb/fat targets, and the new values persist and are used elsewhere in the app.
+**Plans**: TBD
+
+### Phase 7: AI Food Parsing & Auto-Library
+**Goal**: Users can log food in seconds by typing (or speaking) a freeform description, review AI- or locally-computed macros before saving, and re-log repeat items with one tap — with no manual food-creation step ever required.
+**Depends on**: Phase 5, Phase 6 (targets from SET-05 are needed for the live totals-vs-target display)
+**Requirements**: FOOD-11, FOOD-12, FOOD-13, FOOD-14, FOOD-15, FOOD-16, FOOD-17, SET-04
+**Success Criteria** (what must be TRUE):
+  1. User can paste an Anthropic API key in Settings and see a clear "AI ready" vs. "no key set — local parser only" state; the app remains fully usable with no key.
+  2. User can type a freeform food description and see AI-computed calories and macros appear in an editable confirm form before anything is saved to the log or library.
+  3. On platforms that support it, user can dictate the same description by voice; on an installed iOS PWA where voice is unsupported, the mic control is hidden or relabeled rather than doing nothing when tapped.
+  4. With no API key set or while offline, user can enter a structured shorthand description and get deterministic macros computed on-device through the same confirm form.
+  5. After confirming an item once, it is saved to the library automatically (deduped by normalized name) and appears in a one-tap recent/frequent re-log list with last-used serving prefilled — no manual "create food" flow exists anywhere.
+  6. The Daily tab shows live running totals of calories and macros against the configured targets as items are logged, updating without a page reload.
+**Plans**: TBD
 **UI hint**: yes
 
-### Phase 2: Tracking Slices
-**Goal**: All four daily tracking areas are fully usable — user can log PT sessions against templates, log meals with macro totals, enter steps, and do a lift check-in. Goals/targets are configurable. Parallelism: PT plans and Food+Steps+Lifts+Goals plans can be developed concurrently since they share only the db layer.
-**Depends on**: Phase 1
-**Requirements**: PT-01, PT-02, PT-03, PT-04, PT-05, PT-06, PT-07, FOOD-01, FOOD-02, FOOD-03, FOOD-04, FOOD-05, FOOD-06, FOOD-07, FOOD-08, STEPS-01, STEPS-02, LIFT-01, LIFT-02, SET-01, SET-02, SET-03
+### Phase 8: Closure Loop, Dashboard & Redesign
+**Goal**: Users experience a satisfying ring-style daily closure that celebrates finishing food+lift+cardio, can see their closure history and streak at a glance, and can view long-term weight/eating/training trends — all inside a coherent, clean, Apple-design-informed two-tab app.
+**Depends on**: Phase 6, Phase 7 (Dashboard and closure need real check-in, weight, and food data to visualize meaningfully)
+**Requirements**: CLOSE-01, CLOSE-02, CLOSE-03, DASH-01, DASH-02, DASH-03, DASH-04, UI-01, UI-02
 **Success Criteria** (what must be TRUE):
-  1. User can create a PT template (exercise name, target sets/reps), start a session from it, tick off exercises with actual sets/reps, add a pain rating and notes, and save — with the previous session's actuals visible during logging
-  2. User can add a food to the library (name, macros, optional resized photo), then log it to today's meal log by selecting it from the Recent or Frequent quick-access list with serving size pre-filled
-  3. After logging a meal, the calories/protein/carbs/fat progress bars update immediately without a page reload, showing progress against the configured daily targets
-  4. User can enter today's step count and see a progress bar update toward the configured step goal
-  5. User can tap a single "Lifted today" toggle and optionally add a short note; the lift check-in is stored under today's dayKey
-**Plans**: 5 plans
-  - [x] 02-01-foundation-PLAN.md — Install RHF/Zod + @radix-ui/react-dialog, upgrade Sheet, ProgressBar primitive, inferBucket, service skeletons, goals seed in initApp (no REQs)
-  - [x] 02-02-goals-settings-PLAN.md — Goals form in Settings (RHF+Zod); useGoals hook; SET-01, SET-02, SET-03
-  - [x] 02-03-food-slice-PLAN.md — Food Sheet: quick-log chips, inline create+photo, section-grouped today's meals, inline-edit rows; FOOD-01..08
-  - [x] 02-04-pt-slice-PLAN.md — PT Sheet: template list + nested editor + session form with previous-session hint + pain + notes; PT-01..07
-  - [x] 02-05-steps-lift-today-PLAN.md — Inline Steps + Lift slices; wire 4 feature sections into TodayScreen; STEPS-01..02, LIFT-01..02
+  1. The Daily tab shows a ring that fills per component (food / lift / cardio) live as the user logs, computed by a closure service, and plays a satisfying close animation when all three are addressed — respecting `prefers-reduced-motion`.
+  2. User can view a month/heatmap history of closed days and see their current closure streak count at a glance.
+  3. The Dashboard tab shows a weight trend chart with weeks/months range selection, an eating-adherence view (daily calories vs. target across weeks), and a lift/cardio frequency view per week/month.
+  4. The app exposes exactly two primary tabs — Daily and Dashboard — with Settings reachable from either, and no leftover v1 navigation remains.
+  5. Daily, Dashboard, and Settings share one coherent clean/sleek visual system with polished, performant micro-interactions and transitions, verified on a mid-range phone.
+**Plans**: TBD
 **UI hint**: yes
 
-### Phase 3: Streak Loop
-**Goal**: The core motivator is live — a 4-segment calendar renders the current month showing each day's per-area completion state. Tapping a day opens that day's full detail view. The streak count is displayed. Partial fills read as positive progress, never as failure.
-**Depends on**: Phase 2
-**Requirements**: STREAK-01, STREAK-02, STREAK-03, STREAK-04, STREAK-05, STREAK-06, STREAK-07
+### Phase 9: Backup & Release Verification
+**Goal**: Users can fully export and restore their v2 data as JSON without ever leaking the API key, and the schema-breaking v1→v2 upgrade is verified end-to-end on both users' installed apps before v2.0 is called done.
+**Depends on**: Phase 5 (final schema), Phase 8 (all stores and UI in their final v2 shape)
+**Requirements**: BACK-03, BACK-05
 **Success Criteria** (what must be TRUE):
-  1. The calendar renders the current month in a month-at-a-time grid; each day shows a 4-segment indicator (PT / meals / steps / lift) that fills its segment when any log exists for that area on that day
-  2. A day with 1, 2, or 3 of 4 segments logged shows a visually distinct, positive partial-fill state — no red or empty states for non-zero days
-  3. A day with all 4 segments logged renders as a visually "complete" full-fill state distinct from partial days
-  4. Tapping any calendar day opens a day detail view showing all four areas' logs and totals for that day
-  5. The calendar screen displays the current consecutive-complete-days streak count alongside the month grid, and prev/next month navigation works
-**Plans**: 4 plans
-  - [x] 03-01-streak-service-PLAN.md — streak.svc.ts (4-table Promise.all range query) + monthMath.ts + calendar/hooks.ts; STREAK-01, STREAK-05, STREAK-07
-  - [x] 03-02-daycell-primitive-PLAN.md — DayCell.tsx pure 4-quadrant indicator with alpha-ramp + today-ring; STREAK-02, STREAK-03, STREAK-04
-  - [x] 03-03-calendar-assembly-PLAN.md — MonthGrid + StreakCount + MonthHeader + WeekdayHeader + StreakCalendar + CalendarScreen body; STREAK-01, STREAK-04, STREAK-05, STREAK-07
-  - [x] 03-04-day-detail-PLAN.md — /#/day/:dayKey route + DayDetail composer + 3 additive delete service fns; STREAK-06
-**UI hint**: yes
-
-### Phase 4: Backup & Polish
-**Goal**: User can export all data as a versioned JSON file from the Settings screen, and the PWA install experience is complete with proper icons and a data-safety framing for the install prompt. The data-safety story is closed before any meaningful volume of data accumulates.
-**Depends on**: Phase 3
-**Requirements**: BACK-01, BACK-02
-**Success Criteria** (what must be TRUE):
-  1. User can tap "Export" in Settings and receive a downloadable JSON file containing the versioned `ExportEnvelope` (`schemaVersion`, `exportedAt`, `appVersion`, `data`, `photos` as base64) — the download works on iOS home-screen PWA using `<a download>` without `showSaveFilePicker`
-  2. The PWA install prompt is visible with data-safety framing ("install to protect your data from browser eviction") and the app has valid home-screen icons (192px and 512px) and splash configuration on both iOS and Android
-**Plans**: 5 plans
-  - [x] 04-01-export-service-PLAN.md — exportAll() service + ExportCard UI + LAST_EXPORTED_KEY + Settings insertion; BACK-01, BACK-02; D-01..D-04, D-09..D-12
-  - [x] 04-02-midnight-hook-PLAN.md — useDayKey hook + wire through useCurrentStreakCount + new useTodayQuadrantState; closes Phase 3 WR-01/WR-02 per D-05
-  - [x] 04-03-confirm-dialog-PLAN.md — ConfirmDialog primitive + gate DayDetail Lift delete; closes Phase 3 WR-03 per D-06
-  - [x] 04-04-manifest-meta-PLAN.md — vite.config.ts manifest.id + categories; index.html standardized mobile-web-app-capable; D-14, D-15
-  - [x] 04-05-icon-audit-PLAN.md — public/icon-maskable-512.png visual safe-zone audit; D-16
+  1. User can export a JSON backup that includes weight entries, check-ins, and the food library, and the exported file never contains the Anthropic API key.
+  2. User can import a previously exported, current-schema JSON file and see all their data restored correctly.
+  3. Importing an old or incompatible-schema JSON file is rejected with a clear message rather than crashing or partially importing.
+  4. Both users' installed PWAs update cleanly through the v1→v2 schema change with no data loss and no stuck/stale service worker.
+**Plans**: TBD
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4
+v1.0 phases 1-4 are closed. v2.0 phases execute in numeric order: 5 → 6 → 7 → 8 → 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 2/3 | In progress | - |
-| 2. Tracking Slices | 0/TBD | Not started | - |
-| 3. Streak Loop | 4/4 | Verifying | - |
-| 4. Backup & Polish | 5/5 | Complete | 2026-04-21 |
+| 1. Foundation (v1.0) | 3/3 | Complete | 2026-08-08 |
+| 2. Tracking Slices (v1.0) | 5/5 | Complete | 2026-08-08 |
+| 3. Streak Loop (v1.0) | 4/4 | Complete | 2026-08-08 |
+| 4. Backup & Polish (v1.0) | 5/5 | Complete (94%, UAT partial) | 2026-08-08 |
+| 5. Data Layer Migration | 0/TBD | Not started | - |
+| 6. Check-offs, Weight & Targets | 0/TBD | Not started | - |
+| 7. AI Food Parsing & Auto-Library | 0/TBD | Not started | - |
+| 8. Closure Loop, Dashboard & Redesign | 0/TBD | Not started | - |
+| 9. Backup & Release Verification | 0/TBD | Not started | - |
