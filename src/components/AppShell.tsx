@@ -11,8 +11,12 @@ import { focusRing, press } from './ui/styles';
  * AppShell — floating glass header + banner slot + route outlet + tab bar.
  * The <header> and TabBar's <nav> provide implicit landmark roles.
  *
- * Layout: the shell is one viewport tall (`h-dvh`, which tracks the iOS
- * toolbar) and clips; <main> is the only scroller and fills it completely.
+ * Layout: the shell is one viewport tall and clips; <main> is the only scroller
+ * and fills it completely. `h-dvh` tracks the iOS toolbar in a browser tab, but
+ * installed to the Home Screen there is no toolbar to track and iOS reports a
+ * dvh shorter than the window — which left a band of bare canvas under the tab
+ * bar. `.app-shell` carries a `display-mode: standalone` override (index.css)
+ * switching to `height: 100%`, i.e. the window itself.
  * The header and tab bar are absolutely positioned ON TOP of that scroller
  * rather than being flex siblings beside it — which is the whole point. Glass
  * blurs whatever is painted behind it, so if the bars sat next to the content
@@ -40,7 +44,7 @@ import { focusRing, press } from './ui/styles';
  */
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div className="sky relative h-dvh overflow-hidden bg-bg text-text [--shell-header:60px] [--shell-tabbar:74px] lg:[--shell-header:76px] lg:[--shell-tabbar:32px]">
+    <div className="app-shell sky relative h-dvh overflow-hidden bg-bg text-text [--shell-header:60px] [--shell-tabbar:74px] lg:[--shell-header:76px] lg:[--shell-tabbar:32px]">
       {/* `scrollbar-gutter: stable both-edges` reserves the scrollbar's width
           on BOTH sides. Without it, <main>'s scrollbar eats width from the
           right only, so content centres in a box that is offset from the one

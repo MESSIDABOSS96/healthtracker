@@ -72,6 +72,16 @@ html {
   /* The sky's top color, so the pre-React paint matches where the gradient
      starts rather than flashing a mid-tone. */
   background-color: var(--sky-top);
+  /* The root element's background paints the CANVAS — the whole window, not
+     just html's box — so it is what shows through anywhere the shell doesn't
+     reach. As a flat --sky-top that read as a pale blue band pasted under the
+     app; carrying the gradient means an uncovered strip continues the sky
+     instead of announcing itself. Sized to the element (not 100dvh like
+     `.sky`) precisely because the case being covered is the canvas being
+     TALLER than a dvh-measured box. */
+  background-image: var(--sky);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
   color: var(--text);
   -webkit-text-size-adjust: 100%;
 }
@@ -82,9 +92,32 @@ html {
    box — including the absolutely-positioned header — left by half its width.
    That reads as "the layout isn't centred" and is invisible in the CSS. */
 html,
-body {
+body,
+#root {
   height: 100%;
   overflow: hidden;
+}
+
+/* Installed to the Home Screen there is no browser chrome for `h-dvh` to track,
+   and iOS reports a dvh shorter than the window there — which left a strip of
+   bare canvas along the bottom, below the tab bar, reading as a blue footer
+   bolted under the app. In standalone the window IS the viewport, so measure
+   against it directly: 100% resolves up the #root → body → html chain to the
+   real window height. `h-dvh` stays the default for browser tabs, where
+   tracking the collapsing toolbar is the whole point. */
+@media (display-mode: standalone) {
+  .app-shell {
+    height: 100%;
+  }
+  /* The wash has to be measured the same way the shell is, or the shell grows
+     past the end of its own gradient and the last strip falls back to flat
+     --bg — trading the blue footer for a grey one. 100lvh is the large
+     viewport, which is what the 100% chain above resolves against, and it also
+     keeps the edge strips (sized in the same unit, anchored to opposite edges)
+     continuing the shell's gradient exactly rather than banding across it. */
+  .sky {
+    background-size: 100% 100lvh;
+  }
 }
 
 body {
