@@ -53,7 +53,22 @@ create policy "own rows: delete" on public.sync_rows
 -- Realtime. Without this the table changes but no websocket event is emitted,
 -- and sync silently degrades to the interval and focus triggers — working, but
 -- not live, and with nothing on screen to say why.
-alter publication supabase_realtime add table public.sync_rows;
+--
+-- Guarded because ALTER PUBLICATION ... ADD TABLE has no IF NOT EXISTS and
+-- errors on a table already in the publication. Every other statement here is
+-- re-runnable; without this one the whole script stops being safe to re-run,
+-- which is exactly when you need it to be — halfway through a failed setup.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'sync_rows'
+  ) then
+    alter publication supabase_realtime add table public.sync_rows;
+  end if;
+end $$;
 
 -- REPLICA IDENTITY FULL so the realtime payload carries the whole row. The
 -- default (primary key only) would deliver an event naming a row without its

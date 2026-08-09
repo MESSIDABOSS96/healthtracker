@@ -1,5 +1,5 @@
 // src/services/auth.svc.ts
-// Google sign-in, and the account identity the sync engine scopes data to.
+// Email + password sign-in, and the account identity sync scopes data to.
 //
 // Sign-OUT deliberately does NOT delete local data. The database is this
 // device's copy of the user's own logs, not a cache of someone else's account —
@@ -18,8 +18,6 @@ const LAST_ACCOUNT_KEY = 'healthtracker:lastSyncedAccount';
 export interface Account {
   id: string;
   email: string | null;
-  name: string | null;
-  avatarUrl: string | null;
 }
 
 export async function getAccount(): Promise<Account | null> {
@@ -27,36 +25,53 @@ export async function getAccount(): Promise<Account | null> {
   const { data } = await supabase.auth.getUser();
   const user = data.user;
   if (!user) return null;
-  return {
-    id: user.id,
-    email: user.email ?? null,
-    name: (user.user_metadata?.full_name as string | undefined) ?? null,
-    avatarUrl: (user.user_metadata?.avatar_url as string | undefined) ?? null,
-  };
+  return { id: user.id, email: user.email ?? null };
 }
 
 /**
- * Start the Google OAuth redirect.
+ * Email + password, deliberately over an OAuth redirect.
  *
- * `redirectTo` is the app's own origin so the flow returns to whichever origin
- * the user actually launched — the deployed URL, a preview, or localhost —
- * without a build-time constant that silently breaks on one of them. Each of
- * those origins must be listed in Supabase's redirect allowlist; an origin
- * that isn't returns the user to the site root, signed out, with no error.
+ * The redirect flow is hostile to an installed PWA: it leaves the app, and on
+ * iOS it can return to Safari rather than the standalone window the user
+ * started in — so they sign in and the app they were holding is still signed
+ * out. Magic links are worse for the same reason, since the link opens in
+ * whatever the mail client considers the default browser. Credentials entered
+ * in-app never leave the app.
+ *
+ * Errors are surfaced verbatim rather than normalized to "sign-in failed".
+ * Supabase distinguishes wrong password from unconfirmed email from rate
+ * limited, and collapsing those leaves the user retyping a correct password.
  */
-export async function signInWithGoogle(): Promise<void> {
+export async function signIn(email: string, password: string): Promise<void> {
   if (!supabase) throw new Error('Sync is not configured in this build.');
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: window.location.origin,
-      // Without this, Google silently reuses a previously-granted account on a
-      // shared browser rather than letting the user choose — the exact failure
-      // the two of you would hit signing in on the same laptop.
-      queryParams: { prompt: 'select_account' },
-    },
+  const { error } = await supabase.auth.signInWithPassword({
+    email: email.trim(),
+    password,
   });
   if (error) throw error;
+}
+
+/**
+ * Create an account.
+ *
+ * With email confirmation disabled in Supabase this returns a live session
+ * immediately. With it enabled, it returns a user and NO session — the caller
+ * would look signed out for no visible reason, so that case is reported rather
+ * than silently doing nothing.
+ */
+export async function signUp(email: string, password: string): Promise<void> {
+  if (!supabase) throw new Error('Sync is not configured in this build.');
+  const { data, error } = await supabase.auth.signUp({
+    email: email.trim(),
+    password,
+  });
+  if (error) throw error;
+  if (!data.session) {
+    throw new Error(
+      'Account created — check your email to confirm it, then sign in. ' +
+        '(Turn off "Confirm email" in Supabase to skip this step.)',
+    );
+  }
 }
 
 export async function signOut(): Promise<void> {

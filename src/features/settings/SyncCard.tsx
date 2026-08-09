@@ -1,5 +1,5 @@
 // src/features/settings/SyncCard.tsx
-// Sign in with Google, and an honest read on whether this device is current.
+// Sign in, and an honest read on whether this device is actually current.
 //
 // The status line is the point of this card. Sync that silently stops is worse
 // than no sync: the user keeps logging, believes both devices agree, and finds
@@ -7,14 +7,15 @@
 // "N waiting to upload" is shown as a plain fact rather than an error — being
 // offline in a gym is the normal case, not a fault.
 
+import { useState } from 'react';
 import { CloudOff, Cloud, LogOut, RefreshCw, TriangleAlert } from 'lucide-react';
 import { isSyncConfigured } from '@/lib/supabase';
-import { signInWithGoogle, signOut } from '@/services/auth.svc';
+import { signIn, signUp, signOut } from '@/services/auth.svc';
 import { syncNow } from '@/services/sync.svc';
 import { releaseSync, useAccount, useSyncStatus } from '@/features/sync/useSync';
 import { SettingsCard } from './SettingsCard';
 import { Button } from '@/components/ui/button';
-import { focusRing, press } from '@/components/ui/styles';
+import { field, focusRing, press } from '@/components/ui/styles';
 import { cn } from '@/lib/utils';
 
 function relativeTime(ts: number): string {
@@ -30,10 +31,31 @@ function relativeTime(ts: number): string {
 export function SyncCard({ className }: { className?: string }) {
   const account = useAccount();
   const status = useSyncStatus();
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // A build with no Supabase credentials is the original local-only app. Say
-  // nothing rather than offering a button that can only fail.
+  // nothing rather than offering a form that can only fail. Hooks run first —
+  // an early return above them would break the rules of hooks the moment
+  // credentials appear at build time and this component starts rendering.
   if (!isSyncConfigured()) return null;
+
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      if (mode === 'signup') await signUp(email, password);
+      else await signIn(email, password);
+      setPassword('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong — try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -52,42 +74,80 @@ export function SyncCard({ className }: { className?: string }) {
       className={className}
     >
       {!account ? (
-        <div className="space-y-3">
+        <form
+          className="space-y-3"
+          onSubmit={e => {
+            e.preventDefault();
+            void submit();
+          }}
+        >
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-muted">Email</span>
+            <input
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              className={field}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-muted">Password</span>
+            <input
+              type="password"
+              // Tells a password manager to offer a strong new password when
+              // creating, and the saved one when signing in. Getting this wrong
+              // is why so many sign-up forms silently save the wrong entry.
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              className={field}
+            />
+          </label>
+
+          {error && (
+            <p className="text-[12.5px] leading-relaxed text-danger" role="alert">
+              {error}
+            </p>
+          )}
+
           <Button
-            type="button"
+            type="submit"
             variant="default"
             className="w-full"
-            onClick={() => void signInWithGoogle()}
+            disabled={busy || !email.trim() || password.length < 6}
           >
-            Continue with Google
+            {busy ? 'Working…' : mode === 'signup' ? 'Create account' : 'Sign in'}
           </Button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setMode(mode === 'signup' ? 'signin' : 'signup');
+              setError(null);
+            }}
+            className={cn(
+              '-mx-1 block w-[calc(100%+0.5rem)] rounded-sm px-1 py-0.5 text-[12.5px] text-muted',
+              '[@media(hover:hover)]:hover:text-text',
+              focusRing,
+            )}
+          >
+            {mode === 'signup'
+              ? 'Already have an account? Sign in'
+              : 'First time on this device? Create an account'}
+          </button>
+
           <p className="text-[12.5px] leading-relaxed text-faint">
             Your food, weight and check-ins sync. Your AI key never leaves this device.
           </p>
-        </div>
+        </form>
       ) : (
         <div className="space-y-3">
           <div className="flex items-center gap-3 rounded-sm bg-surface-2 px-3 py-2.5">
-            {account.avatarUrl ? (
-              <img
-                src={account.avatarUrl}
-                alt=""
-                className="h-8 w-8 shrink-0 rounded-full"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent-wash text-[13px] font-semibold text-accent">
-                {(account.name ?? account.email ?? '?').charAt(0).toUpperCase()}
-              </span>
-            )}
-            <span className="min-w-0 flex-1">
-              {account.name && (
-                <span className="block truncate text-[13.5px] font-medium text-text">
-                  {account.name}
-                </span>
-              )}
-              <span className="block truncate text-[12px] text-muted">{account.email}</span>
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent-wash text-[13px] font-semibold text-accent">
+              {(account.email ?? '?').charAt(0).toUpperCase()}
             </span>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-text">{account.email}</span>
           </div>
 
           <div className="flex items-center gap-2 text-[12.5px]">
