@@ -2,7 +2,6 @@ import { ChevronRight, Smartphone, Type } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { getDeferredInstallPrompt, triggerInstallPrompt, isStandalone } from '@/lib/installMode';
-import { APP_VERSION, BUILD_HASH } from '@/lib/version';
 import { SettingsCard } from '@/features/settings/SettingsCard';
 import { GoalsForm } from '@/features/settings/GoalsForm';
 import { LongTermGoalsForm } from '@/features/settings/LongTermGoalsForm';
@@ -10,6 +9,7 @@ import { AppearanceCard } from '@/features/settings/AppearanceCard';
 import { ApiKeyCard } from '@/features/settings/ApiKeyCard';
 import { ExportCard } from '@/features/settings/ExportCard';
 import { ImportCard } from '@/features/settings/ImportCard';
+import { ViewportDiagnostics } from '@/features/settings/ViewportDiagnostics';
 import { FoodLibraryCard } from '@/features/settings/FoodLibraryCard';
 import { SyncCard } from '@/features/settings/SyncCard';
 
@@ -27,7 +27,8 @@ function isAndroid(): boolean {
  *
  * Plan 01-03: Install card (D-12) — platform-aware copy + Android Install
  * button when beforeinstallprompt was captured, hidden when already installed.
- * Version line (D-10) — bottom-of-screen muted "v{version} (build {hash})".
+ * Version line (D-10) — bottom-of-screen muted "v{version} (build {hash})", now
+ * also the tap target that reveals ViewportDiagnostics.
  */
 export function SettingsScreen() {
   const installed = isStandalone();
@@ -102,9 +103,7 @@ export function SettingsScreen() {
         <FoodLibraryCard className="lg:col-span-2" />
       </div>
 
-      <p className="stat mt-8 text-center text-xs text-faint">
-        v{APP_VERSION} · build {BUILD_HASH}
-      </p>
+      <ViewportDiagnostics />
     </div>
   );
 }
