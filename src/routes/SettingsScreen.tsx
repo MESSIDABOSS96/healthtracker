@@ -1,4 +1,5 @@
-import { Smartphone } from 'lucide-react';
+import { ChevronRight, Smartphone, Type } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { getDeferredInstallPrompt, triggerInstallPrompt, isStandalone } from '@/lib/installMode';
 import { APP_VERSION, BUILD_HASH } from '@/lib/version';
@@ -64,6 +65,23 @@ export function SettingsScreen() {
         <LongTermGoalsForm />
 
         <ApiKeyCard />
+
+        {/* Sits beside the AI card because both are about getting food INTO the
+            app. It isn't a setting, so it doesn't belong up with the goals —
+            this screen is ordered by how often you change something. */}
+        <SettingsCard
+          title="Entry format"
+          icon={Type}
+          description="Every way you can type food into the box — weights, label numbers, servings and multipliers."
+        >
+          <Link
+            to="/help"
+            className="inline-flex items-center gap-1 text-[13px] font-medium text-accent [@media(hover:hover)]:hover:underline"
+          >
+            Open the reference
+            <ChevronRight size={14} aria-hidden />
+          </Link>
+        </SettingsCard>
 
         <AppearanceCard />
 

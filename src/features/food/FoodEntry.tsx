@@ -20,6 +20,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
+import { Link } from 'react-router-dom';
 import { ArrowUp, Loader2, Sparkles, TriangleAlert, Undo2 } from 'lucide-react';
 import type { MealBucket } from '@/db/schema';
 import { Button } from '@/components/ui/button';
@@ -424,6 +425,14 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
               Settings to estimate unknown foods.
             </p>
           )}
+          {/* The one moment the format reference is actually wanted: you typed
+              something, nothing matched, and the fix is knowing what to type. */}
+          <Link
+            to="/help"
+            className="mt-1.5 inline-block text-[12.5px] text-faint [@media(hover:hover)]:hover:text-muted"
+          >
+            See the entry format
+          </Link>
         </div>
       )}
 
