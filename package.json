@@ -9,6 +9,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
+    "build:food-table": "node scripts/build-food-table.mjs",
+    "test": "node --experimental-strip-types --test 'src/**/*.test.ts'",
     "lint": "eslint . --ext .ts,.tsx"
   },
   "dependencies": {

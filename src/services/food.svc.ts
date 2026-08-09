@@ -45,13 +45,14 @@ export function toServingBasis(parsed: ParsedFood): {
 
 /**
  * Upsert a confirmed parse into the library (dedupe on normalizedName) and
- * log it as a meal entry for the given day. Returns the library food used.
+ * log it as a meal entry for the given day. Returns the library food used and
+ * the new entry's id, so the caller can offer an undo.
  */
 export async function logParsedFood(params: {
   parsed: ParsedFood;
   bucket: MealBucket;
   dayKey: string;
-}): Promise<Food> {
+}): Promise<{ food: Food; entryId: string }> {
   const { parsed, bucket, dayKey } = params;
   const basis = toServingBasis(parsed);
   const normalizedName = normalizeFoodName(parsed.name);
@@ -86,8 +87,8 @@ export async function logParsedFood(params: {
     };
   }
   await db.foods.put(food);
-  await logMeal({ food, servings: basis.servings, bucket, dayKey });
-  return food;
+  const entryId = await logMeal({ food, servings: basis.servings, bucket, dayKey });
+  return { food, entryId };
 }
 
 export async function deleteFood(id: string): Promise<void> {

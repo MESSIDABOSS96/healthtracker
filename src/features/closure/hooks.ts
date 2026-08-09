@@ -9,13 +9,8 @@ import {
   type DayClosure,
 } from '@/services/closure.svc';
 
-const EMPTY: DayClosure = { food: false, lift: false, cardio: false, closed: false };
-
 export function useDayClosure(dayKey: string): DayClosure | undefined {
-  return useLiveQuery(
-    () => getClosureForDay(dayKey).then(m => m.get(dayKey) ?? EMPTY),
-    [dayKey],
-  );
+  return useLiveQuery(() => getClosureForDay(dayKey), [dayKey]);
 }
 
 export function useClosureStreak(todayKey: string): number | undefined {

@@ -20,6 +20,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ClosureRing } from '@/features/closure/ClosureRing';
 import { useDayClosure, useClosureStreak } from '@/features/closure/hooks';
+import { blankClosure } from '@/services/closure.svc';
 import { CheckinButtons } from '@/features/checkins/CheckinButtons';
 import { FoodEntry } from '@/features/food/FoodEntry';
 import { LibraryChips } from '@/features/food/LibraryChips';
@@ -27,8 +28,6 @@ import { MacroSummary } from '@/features/food/MacroSummary';
 import { TodayMealList } from '@/features/food/TodayMealList';
 import { WeightCard } from '@/features/weight/WeightCard';
 import { DayNav } from './DayNav';
-
-const EMPTY = { food: false, lift: false, cardio: false, closed: false };
 
 interface DayScreenProps {
   dayKey: string;
@@ -49,7 +48,7 @@ export function DayScreen({ dayKey, todayKey }: DayScreenProps) {
         <div className="mb-2 lg:mb-3">
           <DayNav dayKey={dayKey} todayKey={todayKey} />
           <div className="mt-5">
-            <ClosureRing closure={closure ?? EMPTY} streak={isToday ? streak : undefined} />
+            <ClosureRing closure={closure ?? blankClosure()} streak={isToday ? streak : undefined} />
           </div>
         </div>
 

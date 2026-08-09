@@ -1,33 +1,60 @@
 // src/features/food/FoodEntry.tsx
-// Freeform food entry: type it → parse (AI when key+online, local grammar
-// otherwise) → editable confirm card → save. NOTHING saves without the
-// explicit confirm tap (LLM macro hallucination guard), and suspicious macro
-// math (4/4/9 drift) gets a visible warning, never a silent save.
+// Freeform food entry, resolved as you type.
 //
-// The idle state is deliberately shaped like a message composer — one field, a
-// round send button — because that's the promise of the feature: say what you
-// ate in your own words and it's handled. The confirm state replaces it in
-// place so the flow reads as one object changing, not two screens.
+// The composer's job is to make logging feel like arithmetic, not like a
+// request. Every keystroke re-runs the deterministic tiers of the resolver
+// (your library → the bundled USDA table → the 4/4/9 calculator when the text
+// carries its own numbers); all three are synchronous, so the answer is already
+// on screen before you reach for Enter. Nothing spins, because nothing is
+// waiting on a network.
+//
+// The model tier is the exception and looks like one: it only runs when you ask
+// for it or when nothing local matched, it shows a spinner, and its result goes
+// through the editable confirm card before anything is saved (CLAUDE.md rule
+// #7 — the hallucination guard applies to generated numbers, not to arithmetic
+// or to a row the user already confirmed once).
+//
+// Deterministic logs write straight through and offer an undo instead. That
+// trade is the entire point: a confirm tap on a number the app DERIVED rather
+// than guessed is friction with nothing on the other side of it.
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { ArrowUp, Loader2, Sparkles, TriangleAlert } from 'lucide-react';
+import { ArrowUp, Loader2, Sparkles, TriangleAlert, Undo2 } from 'lucide-react';
 import type { MealBucket } from '@/db/schema';
 import { Button } from '@/components/ui/button';
 import { Segmented } from '@/components/ui/segmented';
 import { field, focusRing, press } from '@/components/ui/styles';
 import { inferBucket } from '@/lib/dayKey';
 import { getApiKey } from '@/lib/apiKey';
+import { isMacroMathSuspicious, ParseError, type ParsedFood } from '@/services/parse.svc';
 import {
-  parseFood,
-  isMacroMathSuspicious,
-  ParseError,
-  type ParsedFood,
-} from '@/services/parse.svc';
+  resolveInstant,
+  resolveWithAI,
+  type ResolveTier,
+  type Resolution,
+} from '@/services/resolve.svc';
+import { preloadFoodTable } from '@/services/foodTable.svc';
 import { logParsedFood } from '@/services/food.svc';
+import { logMeal, undoMealLog } from '@/services/meals.svc';
 import { cn } from '@/lib/utils';
 
 const BUCKETS: MealBucket[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+const BUCKET_OPTIONS = BUCKETS.map(b => ({ value: b, label: b }));
+
+/** Long enough to notice and reach, short enough not to hang around. */
+const UNDO_WINDOW_MS = 7000;
+
+/** Typing is faster than Dexie round-trips; this keeps the two in step without
+ *  the results visibly lagging the caret. */
+const RESOLVE_DEBOUNCE_MS = 110;
+
+const TIER_LABEL: Record<ResolveTier, string> = {
+  calculator: 'Calculated',
+  library: 'Your library',
+  table: 'USDA',
+  ai: 'AI estimate',
+};
 
 interface Draft {
   name: string;
@@ -38,7 +65,7 @@ interface Draft {
   carbsG: string;
   fatG: string;
   assumptions?: string;
-  source: 'ai' | 'local';
+  source: ParsedFood['source'];
 }
 
 function toDraft(p: ParsedFood): Draft {
@@ -70,50 +97,133 @@ function fromDraft(d: Draft): ParsedFood {
   };
 }
 
-const BUCKET_OPTIONS = BUCKETS.map(b => ({ value: b, label: b }));
+function formatAmount(p: ParsedFood): string {
+  const qty = Math.round(p.quantity * 10) / 10;
+  return p.unit === 'count' ? `${qty}×` : `${qty} ${p.unit}`;
+}
 
 export function FoodEntry({ dayKey }: { dayKey: string }) {
   const reduceMotion = useReducedMotion();
   const [text, setText] = useState('');
-  const [phase, setPhase] = useState<'idle' | 'parsing' | 'confirm'>('idle');
+  const [results, setResults] = useState<Resolution[]>([]);
+  const [asking, setAsking] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [bucket, setBucket] = useState<MealBucket>(() => inferBucket());
   const [error, setError] = useState<string | null>(null);
+  const [lastLog, setLastLog] = useState<{ entryId: string; label: string } | null>(null);
   const hasKey = getApiKey() !== null;
 
-  const handleParse = async () => {
-    if (!text.trim() || phase === 'parsing') return;
-    setError(null);
-    setPhase('parsing');
-    try {
-      const parsed = await parseFood(text.trim());
-      setDraft(toDraft(parsed));
-      setBucket(inferBucket());
-      setPhase('confirm');
-    } catch (err) {
-      setError(err instanceof ParseError ? err.message : 'Something went wrong — try again.');
-      setPhase('idle');
+  // Warm the table chunk while the user is still deciding what to type, so the
+  // first search doesn't pay for the fetch.
+  useEffect(preloadFoodTable, []);
+
+  // --- live resolution ----------------------------------------------------
+  // `seq` discards out-of-order responses: two keystrokes in flight can settle
+  // backwards, and rendering the older one puts stale numbers under the caret.
+  const seq = useRef(0);
+  useEffect(() => {
+    const query = text.trim();
+    if (!query) {
+      setResults([]);
+      return;
     }
+    const ticket = ++seq.current;
+    const timer = setTimeout(() => {
+      resolveInstant(query)
+        .then(found => {
+          if (seq.current === ticket) setResults(found);
+        })
+        .catch(err => {
+          // This runs on every keystroke, so it can't raise a visible error —
+          // the composer just falls back to offering the AI tier. Anything that
+          // breaks here is a Dexie or chunk-load fault worth seeing in a log.
+          console.error('[FoodEntry] resolve failed', err);
+          if (seq.current === ticket) setResults([]);
+        });
+    }, RESOLVE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [text]);
+
+  useEffect(() => {
+    if (!lastLog) return;
+    const timer = setTimeout(() => setLastLog(null), UNDO_WINDOW_MS);
+    return () => clearTimeout(timer);
+  }, [lastLog]);
+
+  const reset = () => {
+    setText('');
+    setResults([]);
+    setError(null);
+    seq.current++;
   };
 
-  const handleSave = async () => {
+  // --- logging ------------------------------------------------------------
+
+  const logResolution = async (resolution: Resolution) => {
+    setError(null);
+    const entryId = resolution.libraryFood
+      ? // Straight from a library row: log the row as-is. Routing this through
+        // logParsedFood would re-derive per-serving facts from numbers that
+        // were themselves derived from it, and rewrite the row each time.
+        await logMeal({
+          food: resolution.libraryFood,
+          servings: resolution.libraryServings ?? 1,
+          bucket: inferBucket(),
+          dayKey,
+        })
+      : (await logParsedFood({ parsed: resolution.parsed, bucket: inferBucket(), dayKey }))
+          .entryId;
+
+    setLastLog({
+      entryId,
+      label: `${resolution.parsed.name} · ${Math.round(resolution.parsed.calories)} kcal`,
+    });
+    reset();
+  };
+
+  const askAI = useCallback(async () => {
+    const query = text.trim();
+    if (!query || asking) return;
+    setError(null);
+    setAsking(true);
+    try {
+      const resolution = await resolveWithAI(query);
+      setDraft(toDraft(resolution.parsed));
+      setBucket(inferBucket());
+    } catch (err) {
+      setError(err instanceof ParseError ? err.message : 'Something went wrong — try again.');
+    } finally {
+      setAsking(false);
+    }
+  }, [text, asking]);
+
+  const handleSubmit = () => {
+    if (!text.trim() || asking) return;
+    if (results.length) void logResolution(results[0]);
+    else void askAI();
+  };
+
+  const handleSaveDraft = async () => {
     if (!draft) return;
     const parsed = fromDraft(draft);
     if (!parsed.name) return;
-    await logParsedFood({ parsed, bucket, dayKey });
+    const { entryId } = await logParsedFood({ parsed, bucket, dayKey });
+    setLastLog({ entryId, label: `${parsed.name} · ${Math.round(parsed.calories)} kcal` });
     setDraft(null);
-    setText('');
-    setPhase('idle');
+    reset();
   };
 
-  const handleCancel = () => {
-    setDraft(null);
-    setPhase('idle');
+  const handleUndo = async () => {
+    if (!lastLog) return;
+    await undoMealLog(lastLog.entryId);
+    setLastLog(null);
   };
+
+  // --- confirm card (AI results only) -------------------------------------
 
   const suspicious = draft ? isMacroMathSuspicious(fromDraft(draft)) : false;
 
-  if (phase === 'confirm' && draft) {
+  if (draft) {
     const numField = (
       labelText: string,
       key: keyof Draft,
@@ -143,14 +253,14 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
           <p className="font-display text-[15px] font-semibold tracking-[-0.015em] text-text">
             Check before saving
           </p>
-          {draft.source === 'ai' && (
-            <span className="flex shrink-0 items-center gap-1 rounded-full bg-accent-wash px-2 py-1 text-[11px] font-medium text-accent">
-              <Sparkles size={11} aria-hidden /> AI parsed
-            </span>
-          )}
+          <span className="flex shrink-0 items-center gap-1 rounded-full bg-accent-wash px-2 py-1 text-[11px] font-medium text-accent">
+            <Sparkles size={11} aria-hidden /> AI parsed
+          </span>
         </div>
 
-        {draft.assumptions && <p className="text-xs leading-relaxed text-muted">{draft.assumptions}</p>}
+        {draft.assumptions && (
+          <p className="text-xs leading-relaxed text-muted">{draft.assumptions}</p>
+        )}
 
         {suspicious && (
           <p
@@ -184,14 +294,14 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
         />
 
         <div className="flex gap-2">
-          <Button type="button" variant="ghost" className="flex-1" onClick={handleCancel}>
+          <Button type="button" variant="ghost" className="flex-1" onClick={() => setDraft(null)}>
             Cancel
           </Button>
           <Button
             type="button"
             variant="default"
             className="flex-1"
-            onClick={handleSave}
+            onClick={handleSaveDraft}
             disabled={!draft.name.trim()}
           >
             Log it
@@ -201,14 +311,17 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
     );
   }
 
-  const canSubmit = !!text.trim() && phase !== 'parsing';
+  // --- composer -----------------------------------------------------------
+
+  const query = text.trim();
+  const showNoMatch = query.length > 0 && results.length === 0 && !asking;
 
   return (
     <div className="space-y-2">
       <form
         onSubmit={e => {
           e.preventDefault();
-          handleParse();
+          handleSubmit();
         }}
         className={cn(
           'flex items-center gap-2 rounded-full border border-hairline bg-surface p-1.5 pl-5 shadow-card',
@@ -219,14 +332,14 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
           type="text"
           value={text}
           onChange={e => setText(e.target.value)}
-          placeholder={hasKey ? 'What did you eat?' : 'chicken 200g 31p 0c 4f'}
+          placeholder="What did you eat?"
           aria-label="Describe what you ate"
           className="h-10 min-w-0 flex-1 bg-transparent text-[15px] text-text placeholder:text-faint focus:outline-none"
         />
         <button
           type="submit"
-          disabled={!canSubmit}
-          aria-label="Parse and add"
+          disabled={!query || asking}
+          aria-label={results.length ? 'Log it' : 'Estimate with AI'}
           className={cn(
             'grid h-10 w-10 shrink-0 place-items-center rounded-full',
             'bg-accent-solid text-on-accent',
@@ -237,7 +350,7 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
             focusRing,
           )}
         >
-          {phase === 'parsing' ? (
+          {asking ? (
             <Loader2 size={17} className="animate-spin" aria-hidden />
           ) : (
             <ArrowUp size={18} strokeWidth={2.4} aria-hidden />
@@ -245,18 +358,107 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
         </button>
       </form>
 
+      {results.length > 0 && (
+        <motion.ul
+          initial={reduceMotion ? false : { opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+          className="overflow-hidden rounded-lg border border-hairline bg-surface shadow-card divide-y divide-hairline"
+        >
+          {results.map((r, i) => (
+            <li key={`${r.tier}-${r.parsed.name}-${i}`}>
+              <button
+                type="button"
+                onClick={() => void logResolution(r)}
+                className={cn(
+                  'flex w-full items-center gap-3 px-4 py-3 text-left',
+                  '[@media(hover:hover)]:hover:bg-surface-2',
+                  press,
+                  'transition-[background-color,transform] duration-150 ease-out-soft',
+                  focusRing,
+                )}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[14px] font-medium text-text">
+                    {r.parsed.name}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[12px] text-muted">
+                    <span className="stat">{formatAmount(r.parsed)}</span>
+                    {' · '}
+                    <span className="stat">{Math.round(r.parsed.proteinG)}</span>P{' '}
+                    <span className="stat">{Math.round(r.parsed.carbsG)}</span>C{' '}
+                    <span className="stat">{Math.round(r.parsed.fatG)}</span>F
+                    {' · '}
+                    {TIER_LABEL[r.tier]}
+                  </span>
+                </span>
+                <span className="stat shrink-0 text-[15px] font-semibold text-text">
+                  {Math.round(r.parsed.calories)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </motion.ul>
+      )}
+
+      {showNoMatch && (
+        <div className="rounded-lg border border-hairline bg-surface px-4 py-3 shadow-card">
+          {hasKey ? (
+            <button
+              type="button"
+              onClick={() => void askAI()}
+              className={cn(
+                '-mx-1 flex w-[calc(100%+0.5rem)] items-center gap-2 rounded-sm px-1 py-0.5 text-left',
+                focusRing,
+              )}
+            >
+              <Sparkles size={13} className="shrink-0 text-accent" aria-hidden />
+              <span className="text-[13px] text-muted">
+                No match — <span className="font-medium text-text">estimate with AI</span>
+              </span>
+            </button>
+          ) : (
+            <p className="text-[13px] leading-relaxed text-muted">
+              No match. Add the facts to log it now —{' '}
+              <span className="stat text-text">250g 30p 10c 5f</span> — or add an API key in
+              Settings to estimate unknown foods.
+            </p>
+          )}
+        </div>
+      )}
+
       {error && (
         <p className="px-1 text-xs text-danger" role="alert">
           {error}
         </p>
       )}
 
-      {!hasKey && (
-        <p className="px-1 text-xs leading-relaxed text-faint">
-          Offline format: <span className="stat text-muted">name 150g 31p 0c 4f</span> — add{' '}
-          <span className="stat text-muted">/100g</span> if the facts are per 100g. Add an API key
-          in Settings for freeform entry.
-        </p>
+      {lastLog && (
+        <motion.div
+          initial={reduceMotion ? false : { opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+          className="flex items-center gap-3 rounded-full border border-hairline bg-surface-2 py-2 pl-4 pr-2"
+          role="status"
+        >
+          <span className="min-w-0 flex-1 truncate text-[13px] text-muted">
+            Logged {lastLog.label}
+          </span>
+          <button
+            type="button"
+            onClick={() => void handleUndo()}
+            className={cn(
+              'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1',
+              'text-[13px] font-medium text-accent',
+              '[@media(hover:hover)]:hover:bg-accent-wash',
+              press,
+              'transition-[background-color,transform] duration-150 ease-out-soft',
+              focusRing,
+            )}
+          >
+            <Undo2 size={13} aria-hidden /> Undo
+          </button>
+        </motion.div>
       )}
     </div>
   );

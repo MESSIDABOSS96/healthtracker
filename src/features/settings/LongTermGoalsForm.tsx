@@ -8,12 +8,31 @@ import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Segmented } from '@/components/ui/segmented';
 import { field, label as labelClass } from '@/components/ui/styles';
 import { SettingsCard } from './SettingsCard';
+import type { WeightDirection } from '@/db/schema';
 import { getAllWeights, computeEma } from '@/services/weight.svc';
 import { getLongTermGoals, saveLongTermGoals } from '@/services/longTermGoals.svc';
+import { resolveWeightDirection } from '@/lib/closureMath';
 import { useGoals } from './hooks';
 import { todayKey } from '@/lib/dayKey';
+
+/** 'auto' is the absence of an override, not a fourth stored value. */
+type DirectionChoice = 'auto' | WeightDirection;
+
+const DIRECTION_OPTIONS: Array<{ value: DirectionChoice; label: string }> = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'lose', label: 'Cut' },
+  { value: 'maintain', label: 'Hold' },
+  { value: 'gain', label: 'Bulk' },
+];
+
+const DIRECTION_COPY: Record<WeightDirection, string> = {
+  lose: 'a ceiling — the calorie ring fills when you finish at or under it',
+  maintain: 'a band — the calorie ring fills within 10% either side of it',
+  gain: 'a floor — the calorie ring fills when you finish at or over it',
+};
 
 const numOrUndef = (s: string): number | undefined => {
   const n = parseFloat(s);
@@ -30,6 +49,7 @@ export function LongTermGoalsForm() {
   const [targetDate, setTargetDate] = useState('');
   const [lifts, setLifts] = useState('');
   const [cardio, setCardio] = useState('');
+  const [direction, setDirection] = useState<DirectionChoice>('auto');
   const [saved, setSaved] = useState(false);
 
   // Re-sync when the stored row resolves (or changes in another tab).
@@ -39,7 +59,20 @@ export function LongTermGoalsForm() {
     setTargetDate(stored?.targetDate ?? '');
     setLifts(stored?.liftsPerWeek != null ? String(stored.liftsPerWeek) : '');
     setCardio(stored?.cardioPerWeek != null ? String(stored.cardioPerWeek) : '');
+    setDirection(stored?.directionOverride ?? 'auto');
   }, [stored]);
+
+  // What the closure ring will actually use. On 'auto' this previews the
+  // derivation live against the goal weight being typed, so choosing Auto
+  // never leaves you guessing which way it resolved.
+  const effectiveDirection: WeightDirection =
+    direction === 'auto'
+      ? resolveWeightDirection({
+          startWeight: stored?.startWeight,
+          targetWeight: numOrUndef(targetWeight),
+          directionOverride: undefined,
+        })
+      : direction;
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,6 +83,7 @@ export function LongTermGoalsForm() {
         targetDate: targetDate || undefined,
         liftsPerWeek: numOrUndef(lifts),
         cardioPerWeek: numOrUndef(cardio),
+        directionOverride: direction === 'auto' ? undefined : direction,
       },
       currentEma,
       todayKey(),
@@ -131,6 +165,26 @@ export function LongTermGoalsForm() {
               className={inputClass}
             />
           </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <span className={`block ${labelClass}`}>Direction</span>
+          <Segmented
+            value={direction}
+            onChange={setDirection}
+            options={DIRECTION_OPTIONS}
+            ariaLabel="Weight direction"
+          />
+          <p className="text-xs leading-relaxed text-faint">
+            {direction === 'auto' ? 'From your goal weight: ' : 'Your calorie goal is '}
+            {direction === 'auto' && (
+              <span className="font-medium text-muted">
+                {DIRECTION_OPTIONS.find(o => o.value === effectiveDirection)?.label.toLowerCase()}
+              </span>
+            )}
+            {direction === 'auto' ? ' — ' : ''}
+            {DIRECTION_COPY[effectiveDirection]}.
+          </p>
         </div>
 
         {stored?.startWeight != null && stored?.targetWeight != null && (

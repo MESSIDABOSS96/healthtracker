@@ -95,12 +95,16 @@ export function ApiKeyCard() {
 
   return (
     <SettingsCard
-      title="AI food parsing"
+      title="AI fallback"
       icon={KeyRound}
+      // Deliberately modest copy. Most entries never reach this — they're
+      // answered offline by your own library, the bundled food table, or the
+      // facts you typed. Promising "freeform entry" here would credit the key
+      // with the fast path it isn't on.
       description={
         saved
-          ? 'Freeform entry is on. Type what you ate and the macros are worked out for you.'
-          : 'Add a key to type food in plain language and have calories + macros computed for you. Stored only on this device, never included in backups. Without a key, the structured offline format still works.'
+          ? 'On. Used only for foods the offline table doesn’t know — restaurant dishes and the like.'
+          : 'Optional. Typing food already works offline: your own library, a bundled table of ~6,000 foods, and any nutrition facts you type. A key adds estimates for the leftovers, like a specific restaurant dish. Stored only on this device, never included in backups.'
       }
     >
       {saved ? (

@@ -55,14 +55,20 @@ export function ClosureGrid({ todayKey, closures, streak }: ClosureGridProps) {
   const closedWide = countClosed(0);
   const closedNarrow = countClosed(WEEKS_WIDE - WEEKS_NARROW);
 
-  // Closed is a solid green fill; partial is the same green as an outline over
-  // a faint tint — "started but not finished" reads as an unfilled version of
-  // the finished thing, which no pair of flat tints can convey. The outline is
-  // drawn with an inset box-shadow rather than a border so it can't alter the
-  // cell's box or soften the corner radius.
+  // Closed is a solid green fill. A partial day is mixed toward that same green
+  // in proportion to how much of it landed, so the grid reads as a heat map of
+  // effort rather than a row of identical "you tried" markers — a 90% day and a
+  // 20% day are different facts and used to look the same.
   //
-  // Today's marker is an OUTSET outline in the accent, so it stays distinct
-  // from partial's inset ring even on a day that is both.
+  // The mix is capped well below full: at 100% of the partial scale a cell must
+  // still be obviously not-closed, or near-misses would impersonate wins and the
+  // streak would look wrong. `color-mix` lands on --track at 0, so an empty day
+  // needs no special case.
+  //
+  // Today's marker is an outset outline in the accent, which sits outside the
+  // cell and therefore survives any fill.
+  const PARTIAL_CEILING = 0.72;
+
   const cellStyle = (key: string): { style: React.CSSProperties; title: string } => {
     const isToday = key === todayKey;
     const ring = isToday ? { outline: '1.5px solid var(--accent)', outlineOffset: '2px' } : {};
@@ -73,17 +79,19 @@ export function ClosureGrid({ todayKey, closures, streak }: ClosureGridProps) {
     if (c?.closed) {
       return { style: { backgroundColor: 'var(--closed)', ...ring }, title: `${key} — closed` };
     }
-    if (c && (c.food || c.lift || c.cardio)) {
-      return {
-        style: {
-          backgroundColor: 'var(--closed-wash)',
-          boxShadow: 'inset 0 0 0 1.5px var(--closed)',
-          ...ring,
-        },
-        title: `${key} — partial`,
-      };
+
+    const progress = c?.progress ?? 0;
+    if (progress <= 0) {
+      return { style: { backgroundColor: 'var(--track)', ...ring }, title: `${key} — empty` };
     }
-    return { style: { backgroundColor: 'var(--track)', ...ring }, title: `${key} — empty` };
+    const mix = Math.round(progress * PARTIAL_CEILING * 100);
+    return {
+      style: {
+        backgroundColor: `color-mix(in srgb, var(--closed) ${mix}%, var(--track))`,
+        ...ring,
+      },
+      title: `${key} — ${Math.round(progress * 100)}%`,
+    };
   };
 
   return (
@@ -142,13 +150,16 @@ export function ClosureGrid({ todayKey, closures, streak }: ClosureGridProps) {
             />
             Closed
           </li>
+          {/* Two partial swatches, not one — a single mid-tone wouldn't show
+              that the shade itself carries the day's percentage. */}
           <li className="flex items-center gap-1.5">
             <span
               className="inline-block h-2.5 w-2.5 rounded-[3px]"
-              style={{
-                backgroundColor: 'var(--closed-wash)',
-                boxShadow: 'inset 0 0 0 1.5px var(--closed)',
-              }}
+              style={{ backgroundColor: 'color-mix(in srgb, var(--closed) 22%, var(--track))' }}
+            />
+            <span
+              className="-ml-1 inline-block h-2.5 w-2.5 rounded-[3px]"
+              style={{ backgroundColor: 'color-mix(in srgb, var(--closed) 58%, var(--track))' }}
             />
             Partial
           </li>

@@ -24,17 +24,62 @@ React 19 + Vite 7 + TypeScript + Dexie 4 (+ `useLiveQuery`) + Tailwind CSS 4 + `
 |------|-------|
 | Dexie schema + migrations | `src/db/db.ts` (v1 + v2 blocks), types in `src/db/schema.ts` |
 | Day identity | `src/lib/dayKey.ts` only (+ `useDayKey` for midnight rollover) |
-| AI + local food parsing | `src/services/parse.svc.ts` — Anthropic **or** OpenRouter, both browser-direct with the user's own key; deterministic offline grammar as fallback |
+| **Food resolver** | `src/services/resolve.svc.ts` — the entry point. Four tiers, first hit wins; see "The food resolver" below |
+| Input reading | `src/lib/foodQuery.ts` — one structured read of the typed text, shared by every tier. Tested (`npm test`) because it's the one place that can be silently wrong |
+| Bundled nutrition table | `src/data/foodTable.ts` (GENERATED, committed) + `src/services/foodTable.svc.ts` (lazy load, ranked search). Regenerate with `npm run build:food-table` |
+| AI parsing | `src/services/parse.svc.ts` — Anthropic **or** OpenRouter, browser-direct with the user's own key. The LAST tier, not the front door |
 | AI provider config | `src/lib/apiKey.ts` — provider / key / model, localStorage only |
 | Auto-library | `src/services/food.svc.ts` (`logParsedFood`, dedupe on `normalizedName`), `normalizeFoodName.ts` |
-| Closure model | `src/services/closure.svc.ts` — day closes when food logged + lift + cardio checked (any-log semantics) |
+| Closure model | `src/lib/closureMath.ts` (pure grading rules, tested) + `src/services/closure.svc.ts` (fetching). Three graded components — see "Closure" below |
 | Check-offs / weight | `checkins.svc.ts` (row existence = checked, `source` field for future Hevy sync), `weight.svc.ts` (EMA trend) |
-| Long-term goals | `longTermGoals.svc.ts` — goal weight (start snapshotted on first save), target date, weekly lift/cardio targets; projection math from the EMA |
+| Long-term goals | `longTermGoals.svc.ts` — goal weight (start snapshotted on first save), target date, weekly lift/cardio targets, cut/hold/bulk direction; projection math from the EMA |
 | Theming | `lib/theme.ts` + `styles/tokens.css` (`:root` light, `.dark` dark) + pre-paint script in `index.html` |
 | Demo fixture | `src/dev/seedDemo.ts` — `npm run dev:demo` (port 5174 = separate origin = separate IndexedDB) |
 | Screens | `/daily` and `/day/:dayKey` are both thin wrappers over `features/day/DayScreen` — one screen, so stepping days with the arrows or clicking a closure-grid square always lands somewhere identical. `/dashboard` (trends, lazy), `/settings` |
 | Day routing | `lib/dayRoutes.ts` — `dayPath()` is the single answer to "where does this day live" (today → `/daily`, else `/day/:key`). One URL per day. |
 | Backup | `export.svc.ts` / `import.svc.ts` — v2 envelope, current schemaVersion only on import |
+
+## Closure
+
+A day is graded on three components, each producing a `progress` (0..1) and a hard `met` verdict:
+
+| Component | Met when | Partial credit |
+|-----------|----------|----------------|
+| `protein` | daily protein goal reached | `protein / goal` |
+| `calories` | on the right side of the calorie goal | ramps toward the goal, drains past it |
+| `training` | lift **OR** cardio checked | binary |
+
+`progress` drives the ring arcs and the grid shading; `met` decides `closed`. **They are computed separately on purpose** — 49g of a 50g protein goal must look nearly full and still not pass, and deriving the verdict from a rounded percentage would turn that into a float-comparison bug.
+
+Which side of the calorie goal counts depends on `resolveWeightDirection()`: a **ceiling** on a cut, a **floor** on a bulk, a **±10% band** on maintenance. It's derived from goal weight vs snapshotted start weight, overridable in Settings, and defaults to `lose` when neither exists — an assumption the Settings copy states out loud rather than hiding.
+
+Two traps this replaced, both worth not reintroducing:
+
+- **"Any food logged" is not a nutrition goal.** A banana used to fill the food segment. The component is protein now because that's the macro that actually needs hitting.
+- **An unlogged day is not a day spent under your limit.** 0 kcal is technically under a cutting goal, so `calorieComponent` takes an explicit `hasFood` flag and returns zero without it. Logging nothing must never read as a perfect day.
+
+Requiring lift **and** cardio daily set a bar nobody cleared, so the ring sat at 2/3 permanently and stopped carrying information. Either one is a training day.
+
+## The Food Resolver
+
+Logging food has to feel like arithmetic, not like a request. The composer re-resolves on every keystroke and the answer is on screen before the user reaches for Enter, because the first three tiers never touch the network:
+
+| Tier | Fires when | Source | Cost |
+|------|-----------|--------|------|
+| `calculator` | the text carries its own numbers | 4/4/9 arithmetic on what was typed | ~0ms |
+| `library` | the name matches a food this user logged before | Dexie `foods` | ~0ms |
+| `table` | the name matches the bundled USDA data | `src/data/foodTable.ts` (~6k foods, per 100g) | ~0.5ms |
+| `ai` | nothing above matched | Anthropic / OpenRouter | 1–3s |
+
+The tiers are ordered by **how much the answer is already determined**, not by how clever they are. Explicit numbers off a packet beat a database; a food the user personally confirmed beats a generic average; a fixed table beats a model that says 109 kcal for a banana today and 105 tomorrow. That last point is an accuracy argument as much as a speed one — a tracker whose numbers drift between identical meals cannot show a real trend.
+
+Things that will break if you change them casually:
+
+- **Ordering inside `lib/foodQuery.ts` is load-bearing.** The quantity is consumed before the macro labels (or `salmon 200g calories 400` reads as 200 kcal); labels resolve in order of appearance (or `fat 25 carbs 0` gives carbs the 25); and the multiplier is extracted *last*, because `2x` is the amount in `banana 2x` and a multiplier in `chicken 200g 31p 0c 4f 2x` — running after the quantity step is what disambiguates them. `npm test` covers all three; it exists because this file can be wrong *silently*.
+- **The multiplier is folded in exactly once.** `parseFoodQuery` pre-multiplies `quantity` so the displayed amount is the true total, which means `basisScale` must NOT multiply again on any path derived from the quantity. Getting this wrong logs 4× a doubled portion and looks plausible.
+- **`foodTable.svc.ts` ranking is tuned, not arbitrary.** Position-in-name, the `DERIVATIVE` demotion and the `BASIC` bonus are each there because without them the top result for "almonds" was almond oil (884 kcal) and for "egg" was dried yolk (669). Re-run the search spot-checks after touching the scoring.
+- **The table is a generated file that is committed.** `npm run build:food-table` re-derives it from a 6MB USDA download cached in `.cache/`. A clean `npm install && npm run build` never needs the network.
+- **It ships as a `.ts` module, not a `.json` asset**, so the SW's `globPatterns` (js, not json) precaches it. Offline lookup depends on that detail.
 
 ## Project-Breaking Rules
 
@@ -44,7 +89,7 @@ React 19 + Vite 7 + TypeScript + Dexie 4 (+ `useLiveQuery`) + Tailwind CSS 4 + `
 4. **Call `navigator.storage.persist()` on startup** (done in `main.tsx`) — iOS Safari wipes IndexedDB after 7 days of inactivity otherwise.
 5. **Photos: ≤800×800 WebP@80% in OPFS**, `foods.photoKey` stores only a filename — never Blobs in Dexie.
 6. **The AI provider key lives in localStorage, never in Dexie** — export reads Dexie tables only, so the key can structurally never leak into a backup. Same for the provider and model settings.
-7. **Parsed food never auto-saves** — every parse (AI or local) goes through the editable confirm form; keep the 4/4/9 macro sanity check wired.
+7. **AI-parsed food never auto-saves** — a model result always goes through the editable confirm form, with the 4/4/9 macro sanity check wired. The deterministic tiers are exempt and log straight through with an undo: the rule guards against *hallucinated* numbers, and arithmetic on figures the user typed, a row they already confirmed once, or a fixed table row is not a hallucination. Do not extend the confirm step back over them — the tap is the entire latency budget for those paths.
 8. **One `useLiveQuery` per consumer, never per day/cell** — dashboard and grids use single range queries.
 9. **Never rename the Dexie database or the `healthtracker:` localStorage prefix** — see the note at the top. Product renames are cosmetic; storage identifiers are not.
 10. **The phone layout is frozen** — every desktop change goes behind `lg:`. The two-column screens rely on column wrappers sharing the same 20px rhythm as their container, so below `lg` they collapse into a single evenly-spaced run. Don't "simplify" that into a grid with explicit row placement; it reorders the phone.
@@ -83,4 +128,6 @@ Mobile-first: the shell is a fixed `h-dvh` column — header and tab bar are fle
 
 ## Explicitly Out of Scope
 
-Shared data between the two users, backend/auth/sync, Hevy auto-sync (deferred — needs Hevy Pro; `source: 'hevy'` field reserved), nutrition DBs/barcode scanning, photo food recognition, fuzzy library merging, full lift tracking (lives in Hevy), notifications, social features. PT rehab and steps tracking are retired v1 features — do not resurrect.
+Shared data between the two users, backend/auth/sync, Hevy auto-sync (deferred — needs Hevy Pro; `source: 'hevy'` field reserved), **online** nutrition-DB APIs and barcode scanning, photo food recognition, fuzzy library merging, full lift tracking (lives in Hevy), notifications, social features. PT rehab and steps tracking are retired v1 features — do not resurrect.
+
+Note the qualifier on nutrition DBs: this used to read "nutrition DBs" flat, written when AI parsing was expected to carry food lookup on its own. It couldn't — a network round trip per banana is too slow to be used, and a model returns a slightly different number each time, which turns a week of identical breakfasts into a fake trend. The **bundled offline table** that replaced it is a different thing from what that line was guarding against: no API, no account, no network, no barcode hardware — just data compiled into the bundle. A nutrition DB you have to *call* is still out.

@@ -60,7 +60,9 @@ export interface LiftCheckin {
 // Active v2 types
 // ---------------------------------------------------------------------------
 
-export type ParseSource = 'ai' | 'local' | 'legacy';
+/** How a library row's facts were established. 'local' = the user typed the
+ *  numbers in, 'table' = the bundled USDA table, 'legacy' = v1 manual entry. */
+export type ParseSource = 'ai' | 'local' | 'table' | 'legacy';
 
 export interface Food {
   id: string; // uuid
@@ -136,6 +138,13 @@ export interface Goals {
 }
 
 /**
+ * Which way the calorie goal is meant to be crossed. This flips the daily
+ * calorie component of closure from a ceiling to a floor: eating under target
+ * is the win on a cut and the failure on a bulk, and one rule can't serve both.
+ */
+export type WeightDirection = 'lose' | 'maintain' | 'gain';
+
+/**
  * Long-term goals (v3) — the benchmark daily logging is measured against.
  * Separate from the daily `Goals` singleton: different cadence, different
  * lifecycle (a daily macro target changes often; a goal weight rarely does).
@@ -151,5 +160,12 @@ export interface LongTermGoals {
   targetDate?: string;
   liftsPerWeek?: number;
   cardioPerWeek?: number;
+  /**
+   * Manual override for the derived direction. Absent = derive it from
+   * targetWeight vs startWeight. Kept optional (rather than always written) so
+   * "auto" stays a real state: a stored 'lose' that silently stopped tracking a
+   * goal the user later flipped to a bulk would be worse than no value at all.
+   */
+  directionOverride?: WeightDirection;
   updatedAt: number;
 }

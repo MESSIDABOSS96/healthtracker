@@ -15,12 +15,13 @@ export interface DailyTotals {
 
 // ------- Writes -------
 
+/** Returns the new entry's id so the caller can offer an undo. */
 export async function logMeal(params: {
   food: Food;
   servings: number;
   bucket: MealBucket;
   dayKey: string;
-}): Promise<void> {
+}): Promise<string> {
   const { food, servings, bucket, dayKey } = params;
   const entry: MealEntry = {
     id: crypto.randomUUID(),
@@ -40,6 +41,29 @@ export async function logMeal(params: {
     usageCount: (food.usageCount ?? 0) + 1,
     lastUsedAt: entry.loggedAt,
   });
+  return entry.id;
+}
+
+/**
+ * Reverse a log the user just made — the deterministic tiers of the food
+ * resolver write straight through without a confirm step, so undo is what
+ * makes that safe.
+ *
+ * `lastUsedAt` is deliberately NOT restored: the previous value isn't recorded
+ * anywhere, and recency ordering being one entry stale is invisible next to the
+ * cost of storing history for it. The usage count is restored, because that one
+ * accumulates.
+ */
+export async function undoMealLog(entryId: string): Promise<void> {
+  const entry = await db.mealEntries.get(entryId);
+  if (!entry) return;
+  await db.mealEntries.delete(entryId);
+  const food = await db.foods.get(entry.foodId);
+  if (food) {
+    await db.foods.update(food.id, {
+      usageCount: Math.max(0, (food.usageCount ?? 1) - 1),
+    });
+  }
 }
 
 export async function updateMealEntry(

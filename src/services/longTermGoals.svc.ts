@@ -11,7 +11,7 @@
 //     from the target; a misleading date is worse than no date.
 
 import { db } from '@/db/db';
-import type { LongTermGoals, WeightEntry } from '@/db/schema';
+import type { LongTermGoals, WeightDirection, WeightEntry } from '@/db/schema';
 import { computeEma } from './weight.svc';
 import { addDays, keyToDate } from '@/lib/dayKey';
 
@@ -31,6 +31,8 @@ export interface LongTermGoalsInput {
   targetDate?: string;
   liftsPerWeek?: number;
   cardioPerWeek?: number;
+  /** undefined = auto (derive from the weight goal). */
+  directionOverride?: WeightDirection;
 }
 
 /**

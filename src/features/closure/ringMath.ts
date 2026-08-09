@@ -21,16 +21,19 @@ export function arcPath(
   return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArc} 1 ${end.x} ${end.y}`;
 }
 
+export type SegmentKey = 'protein' | 'calories' | 'training';
+
 export interface RingSegment {
-  key: 'food' | 'lift' | 'cardio';
+  key: SegmentKey;
   path: string;
 }
+
+export const SEGMENT_ORDER: SegmentKey[] = ['protein', 'calories', 'training'];
 
 /** Three equal segments starting at 12 o'clock, clockwise, with gaps between. */
 export function ringSegments(cx: number, cy: number, r: number, gapDeg = 14): RingSegment[] {
   const span = 120 - gapDeg;
-  const keys: RingSegment['key'][] = ['food', 'lift', 'cardio'];
-  return keys.map((key, i) => {
+  return SEGMENT_ORDER.map((key, i) => {
     const start = i * 120 + gapDeg / 2;
     return { key, path: arcPath(cx, cy, r, start, start + span) };
   });

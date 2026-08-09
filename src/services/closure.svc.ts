@@ -1,56 +1,155 @@
 // src/services/closure.svc.ts
-// Replaces v1's streak.svc. A day "closes" when all three components are
-// addressed: food (≥1 meal entry — any-log semantics, deliberately NOT
-// hit-target, so the daily win stays low-friction), lift check-off, and
-// cardio check-off. Target adherence lives on the Dashboard instead.
+// What makes a day count.
+//
+// v1 asked three yes/no questions — did you log any food, did you lift, did you
+// do cardio — and closed the day only if all three were yes. That was wrong in
+// both directions. "Any food logged" is not a nutrition goal (a banana closed
+// the segment), and requiring lift AND cardio every single day sets a bar
+// almost nobody clears, so the ring sat at 2/3 forever and stopped meaning
+// anything.
+//
+// The model now grades three components, each returning a 0..1 progress AND a
+// hard met/not-met verdict:
+//
+//   protein   — hit the daily protein goal. The macro that matters most.
+//   calories  — land on the right side of the calorie goal. Which side depends
+//               on whether you're cutting or bulking (see resolveWeightDirection):
+//               a ceiling on a cut, a floor on a bulk, a band on maintenance.
+//   training  — lift OR cardio. Either one is a training day.
+//
+// progress drives the ring fill and the grid shading; `met` decides closure.
+// They are separate on purpose: 49g of a 50g protein goal should look nearly
+// full and still not be a pass, and deriving the verdict from a rounded
+// percentage would make that a float-comparison question.
 //
 // Query discipline (v1 Anti-Pattern 3): one Promise.all of range queries per
-// consumer — never a query per day cell.
+// consumer — never a query per day cell. The two goal singletons are read once
+// for the whole range, not once per day.
 
 import { db } from '@/db/db';
+import type { WeightDirection } from '@/db/schema';
 import { addDays } from '@/lib/dayKey';
+import {
+  calorieComponent,
+  proteinComponent,
+  resolveWeightDirection,
+  trainingComponent,
+  type ClosureComponent,
+} from '@/lib/closureMath';
+
+export type { ClosureComponent };
 
 export interface DayClosure {
-  food: boolean;
+  protein: ClosureComponent;
+  calories: ClosureComponent;
+  training: ClosureComponent;
+  /** Mean of the three components, 0..1. */
+  progress: number;
+  closed: boolean;
+  /** Raw totals, so the UI can show "40 / 50g" without re-querying. */
+  proteinTotal: number;
+  proteinGoal: number;
+  caloriesTotal: number;
+  caloriesGoal: number;
+  /** Kept separate from `training` for the check-off buttons and tooltips. */
   lift: boolean;
   cardio: boolean;
-  closed: boolean;
+  direction: WeightDirection;
 }
 
-const EMPTY: DayClosure = { food: false, lift: false, cardio: false, closed: false };
+function emptyClosure(
+  proteinGoal: number,
+  caloriesGoal: number,
+  direction: WeightDirection,
+): DayClosure {
+  return {
+    protein: { progress: 0, met: false },
+    calories: { progress: 0, met: false },
+    training: { progress: 0, met: false },
+    progress: 0,
+    closed: false,
+    proteinTotal: 0,
+    proteinGoal,
+    caloriesTotal: 0,
+    caloriesGoal,
+    lift: false,
+    cardio: false,
+    direction,
+  };
+}
+
+/** A zero-state closure for components rendering before the query resolves. */
+export function blankClosure(): DayClosure {
+  return emptyClosure(0, 0, 'lose');
+}
 
 /** Inclusive range → Map keyed by dayKey. Days with no activity are absent. */
 export async function getClosureForRange(
   startKey: string,
   endKey: string,
 ): Promise<Map<string, DayClosure>> {
-  const [meals, checkins] = await Promise.all([
+  const [meals, checkins, goals, longTerm] = await Promise.all([
     db.mealEntries.where('dayKey').between(startKey, endKey, true, true).toArray(),
     db.dailyCheckins.where('dayKey').between(startKey, endKey, true, true).toArray(),
+    db.goals.get('singleton'),
+    db.longTermGoals.get('singleton'),
   ]);
+
+  const proteinGoal = goals?.proteinG ?? 0;
+  const caloriesGoal = goals?.calories ?? 0;
+  const direction = resolveWeightDirection(longTerm);
 
   const map = new Map<string, DayClosure>();
   const ensure = (key: string): DayClosure => {
     let c = map.get(key);
     if (!c) {
-      c = { ...EMPTY };
+      c = emptyClosure(proteinGoal, caloriesGoal, direction);
       map.set(key, c);
     }
     return c;
   };
 
-  for (const m of meals) ensure(m.dayKey).food = true;
+  const hasFood = new Set<string>();
+  for (const m of meals) {
+    const day = ensure(m.dayKey);
+    day.proteinTotal += m.computedProteinG;
+    day.caloriesTotal += m.computedCalories;
+    hasFood.add(m.dayKey);
+  }
   for (const c of checkins) {
     const day = ensure(c.dayKey);
     if (c.kind === 'lift') day.lift = true;
     if (c.kind === 'cardio') day.cardio = true;
   }
-  for (const c of map.values()) c.closed = c.food && c.lift && c.cardio;
+
+  for (const [key, day] of map) {
+    day.proteinTotal = Math.round(day.proteinTotal * 10) / 10;
+    day.caloriesTotal = Math.round(day.caloriesTotal);
+    day.protein = proteinComponent(day.proteinTotal, proteinGoal);
+    day.calories = calorieComponent(day.caloriesTotal, caloriesGoal, direction, hasFood.has(key));
+    day.training = trainingComponent(day.lift, day.cardio);
+    day.progress = (day.protein.progress + day.calories.progress + day.training.progress) / 3;
+    day.closed = day.protein.met && day.calories.met && day.training.met;
+  }
   return map;
 }
 
-export function getClosureForDay(dayKey: string): Promise<Map<string, DayClosure>> {
-  return getClosureForRange(dayKey, dayKey);
+/**
+ * One day, always fully formed. A day with nothing logged is ABSENT from the
+ * range map (that's what keeps the grid's history cheap), but the ring still
+ * has to render the goals that day is being measured against — so the empty
+ * case is rebuilt here with the real goals rather than handed back as zeros.
+ */
+export async function getClosureForDay(dayKey: string): Promise<DayClosure> {
+  const [map, goals, longTerm] = await Promise.all([
+    getClosureForRange(dayKey, dayKey),
+    db.goals.get('singleton'),
+    db.longTermGoals.get('singleton'),
+  ]);
+  return (
+    map.get(dayKey) ??
+    emptyClosure(goals?.proteinG ?? 0, goals?.calories ?? 0, resolveWeightDirection(longTerm))
+  );
 }
 
 /**

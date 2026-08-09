@@ -24,5 +24,9 @@
     },
     "types": ["vite/client"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests run on node's built-in runner (node:test + type stripping, no deps),
+  // so they import node builtins this project's DOM-only `types` don't cover.
+  // They are typechecked by nothing and that's fine — `npm test` runs them.
+  "exclude": ["src/**/*.test.ts"]
 }

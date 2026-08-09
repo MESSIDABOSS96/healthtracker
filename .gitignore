@@ -29,6 +29,11 @@ dev-dist
 # Test / coverage
 coverage
 
+# USDA source archive for scripts/build-food-table.mjs. The GENERATED table
+# (src/data/foodTable.ts) is committed; this 6MB download is not, so a clean
+# install never needs the network to build.
+.cache
+
 # Editor configs
 .vscode/*
 !.vscode/extensions.json

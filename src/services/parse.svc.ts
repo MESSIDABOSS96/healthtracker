@@ -1,21 +1,25 @@
 // src/services/parse.svc.ts
-// Freeform food-description parsing. Three providers behind one interface:
+// The MODEL tier of the food resolver — the last resort, not the front door.
+// services/resolve.svc.ts calls this only when the typed text carried no
+// numbers, matched nothing in the user's library, and matched nothing in the
+// bundled USDA table. In practice that leaves composite restaurant dishes.
+//
+// Two providers behind one interface:
 //   1. Anthropic — Claude, called browser-direct (officially supported CORS
 //      path via the `anthropic-dangerous-direct-browser-access` header) with
 //      the user's on-device key. Structured JSON output, Zod-validated.
 //   2. OpenRouter — the same job through an OpenAI-compatible endpoint, so any
 //      model in its catalog (including cheap open-weight ones) can be used.
-//   3. Local — deterministic grammar for offline / no-key use:
-//      "<name> <qty><unit> <P>p <C>c <F>f [<cal>cal] [/100g]"
 //
-// Anthropic and OpenRouter differ in every layer of the request — URL, auth
-// header, where the system prompt goes, how structured output is requested,
-// and where the reply text sits in the response — so they get separate
-// functions rather than a config object with holes in it. What they share is
-// the contract: return a ParsedFood, or throw a ParseError.
+// They differ in every layer of the request — URL, auth header, where the
+// system prompt goes, how structured output is requested, and where the reply
+// text sits in the response — so they get separate functions rather than a
+// config object with holes in it. What they share is the contract: return a
+// ParsedFood, or throw a ParseError.
 //
-// Results NEVER auto-save: the UI routes every parse through an editable
-// confirm form (LLM unit/portion hallucination is a documented failure mode).
+// AI results NEVER auto-save: the UI routes them through an editable confirm
+// form (LLM unit/portion hallucination is a documented failure mode). The
+// deterministic tiers are exempt — see CLAUDE.md rule #7.
 //
 // TRANSACTION RULE: the fetch here must always complete BEFORE any Dexie
 // write begins — never call parse functions inside a db.transaction.
@@ -34,7 +38,7 @@ export interface ParsedFood {
   carbsG: number;
   fatG: number;
   assumptions?: string;
-  source: 'ai' | 'local';
+  source: 'ai' | 'local' | 'table';
 }
 
 export type ParseErrorKind = 'no-key' | 'offline' | 'auth' | 'api' | 'unparseable';
@@ -94,9 +98,13 @@ const OUTPUT_JSON_SCHEMA = {
     proteinG: { type: 'number', description: 'Protein grams for the amount consumed' },
     carbsG: { type: 'number', description: 'Carb grams for the amount consumed' },
     fatG: { type: 'number', description: 'Fat grams for the amount consumed' },
+    // Last in the property order on purpose: with ordered structured output
+    // the numbers are generated first, so a verbose assumption can't delay
+    // them. Capped hard because this field used to produce a two-line
+    // paragraph on every single parse that nobody reads.
     assumptions: {
       type: 'string',
-      description: 'One short sentence on any assumption made (or empty string)',
+      description: 'Any assumption made, 12 words maximum. Empty string if none.',
     },
   },
   required: ['name', 'quantity', 'unit', 'calories', 'proteinG', 'carbsG', 'fatG', 'assumptions'],
@@ -111,7 +119,8 @@ Rules:
 - Only if no facts are given, estimate from standard nutrition knowledge for a typical preparation, and say so in assumptions.
 - calories must be consistent with the macros (protein 4 kcal/g, carbs 4 kcal/g, fat 9 kcal/g, small drift ok).
 - One food item per request. If several foods are described, parse the dominant one and note it in assumptions.
-- Numbers only in numeric fields. Round to 1 decimal.`;
+- Numbers only in numeric fields. Round to 1 decimal.
+- Answer immediately. Do not deliberate — this blocks a text field the user is watching.`;
 
 async function parseWithAI(text: string, apiKey: string, model: string): Promise<ParsedFood> {
   const controller = new AbortController();
@@ -130,7 +139,9 @@ async function parseWithAI(text: string, apiKey: string, model: string): Promise
       },
       body: JSON.stringify({
         model,
-        max_tokens: 1024,
+        // The answer object is ~90 tokens. 1024 bought nothing but a longer
+        // worst case; 300 is headroom without room to ramble.
+        max_tokens: 300,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: text }],
         output_config: {
@@ -252,9 +263,10 @@ async function callOpenRouter(
     body: JSON.stringify({
       model,
       temperature: 0,
-      // Generous: a truncated reply is indistinguishable from a bad one, and
-      // the cost of unused headroom is zero.
-      max_tokens: 900,
+      // See the Anthropic call: the object is ~90 tokens, so this is headroom,
+      // not a budget. Unused headroom is free; unused LATENCY is not, which is
+      // why this isn't set to something arbitrarily large.
+      max_tokens: 300,
       messages: [
         { role: 'system', content: OPENROUTER_SYSTEM_PROMPT },
         { role: 'user', content: text },
@@ -365,101 +377,33 @@ async function parseWithOpenRouter(
 }
 
 // ---------------------------------------------------------------------------
-// Local provider — deterministic, offline.
-// Grammar (order-insensitive apart from name):
-//   "<name> <qty><unit> <P>p <C>c <F>f [<cal>cal|kcal] [/100g | per 100g]"
-// Examples:
-//   "chicken breast 200g 31p 0c 4f /100g"
-//   "protein bar 1x 210cal 20p 22c 7f"
-//   "rice 150g 2.7p 28c 0.3f"
-// ---------------------------------------------------------------------------
-
-const QTY_RE = /(\d+(?:\.\d+)?)\s*(g|kg|ml|l|oz|x|ct|count|serving|servings)\b/i;
-const MACRO_RE = (letter: string) => new RegExp(`(\\d+(?:\\.\\d+)?)\\s*${letter}\\b`, 'i');
-const CAL_RE = /(\d+(?:\.\d+)?)\s*(?:cal|kcal)\b/i;
-const PER100_RE = /(?:\/\s*100\s*(?:g|ml)|per\s*100\s*(?:g|ml))/i;
-
-export function parseLocal(text: string): ParsedFood {
-  const input = text.trim();
-  const qtyMatch = input.match(QTY_RE);
-  const pMatch = input.match(MACRO_RE('p'));
-  const cMatch = input.match(MACRO_RE('c'));
-  const fMatch = input.match(MACRO_RE('f'));
-  const calMatch = input.match(CAL_RE);
-  const per100 = PER100_RE.test(input);
-
-  if (!qtyMatch || !pMatch || !cMatch || !fMatch) {
-    throw new ParseError(
-      'Offline format: "name 150g 31p 0c 4f" (add "/100g" if facts are per 100g).',
-      'unparseable',
-    );
-  }
-
-  let quantity = parseFloat(qtyMatch[1]);
-  let unit = qtyMatch[2].toLowerCase();
-  if (unit === 'kg') {
-    quantity *= 1000;
-    unit = 'g';
-  } else if (unit === 'l') {
-    quantity *= 1000;
-    unit = 'ml';
-  } else if (unit === 'oz') {
-    quantity = Math.round(quantity * 28.35 * 10) / 10;
-    unit = 'g';
-  } else if (unit === 'x' || unit === 'ct' || unit === 'count') {
-    unit = 'count';
-  } else if (unit === 'serving' || unit === 'servings') {
-    unit = 'count';
-  }
-
-  // Macros as written; scale from per-100 to the consumed amount when flagged.
-  const scale = per100 && (unit === 'g' || unit === 'ml') ? quantity / 100 : 1;
-  const round1 = (n: number) => Math.round(n * 10) / 10;
-  const proteinG = round1(parseFloat(pMatch[1]) * scale);
-  const carbsG = round1(parseFloat(cMatch[1]) * scale);
-  const fatG = round1(parseFloat(fMatch[1]) * scale);
-  const calories = calMatch
-    ? round1(parseFloat(calMatch[1]) * scale)
-    : Math.round(4 * proteinG + 4 * carbsG + 9 * fatG);
-
-  // Name = whatever remains after stripping the recognized tokens.
-  const name = input
-    .replace(QTY_RE, ' ')
-    .replace(MACRO_RE('p'), ' ')
-    .replace(MACRO_RE('c'), ' ')
-    .replace(MACRO_RE('f'), ' ')
-    .replace(CAL_RE, ' ')
-    .replace(PER100_RE, ' ')
-    .replace(/[@,]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  if (!name) {
-    throw new ParseError('Include a name, e.g. "chicken 150g 31p 0c 4f".', 'unparseable');
-  }
-
-  return { name, quantity, unit, calories, proteinG, carbsG, fatG, source: 'local' };
-}
-
-// ---------------------------------------------------------------------------
-// Orchestrator — AI when a key exists and we're online; local otherwise.
+// Orchestrator
+//
+// There is no local fallback here anymore. There used to be a second regex
+// grammar in this file for offline use, which meant the app parsed the same
+// input two different ways depending on network state. That job now belongs to
+// lib/foodQuery.ts + the calculator and table tiers in resolve.svc.ts, which
+// run FIRST and work offline by construction — so by the time execution
+// reaches this function, the deterministic tiers have already declined.
+// Falling back to a grammar here could only repeat an answer that was just
+// rejected.
 // ---------------------------------------------------------------------------
 
 export async function parseFood(text: string): Promise<ParsedFood> {
   const apiKey = getApiKey();
-  if (apiKey && navigator.onLine) {
-    try {
-      return getProvider() === 'openrouter'
-        ? await parseWithOpenRouter(text, apiKey, getModel())
-        : await parseWithAI(text, apiKey, getModel());
-    } catch (err) {
-      // Offline/network failures fall through to the local grammar; auth and
-      // hard API errors surface to the user (silent fallback would mask a bad key).
-      if (err instanceof ParseError && err.kind === 'offline') {
-        return parseLocal(text);
-      }
-      throw err;
-    }
+  if (!apiKey) {
+    throw new ParseError(
+      'No match found. Add an API key in Settings to estimate unknown foods.',
+      'no-key',
+    );
   }
-  return parseLocal(text);
+  if (!navigator.onLine) {
+    throw new ParseError(
+      "You're offline — type the amount and nutrition facts to log this now.",
+      'offline',
+    );
+  }
+  return getProvider() === 'openrouter'
+    ? parseWithOpenRouter(text, apiKey, getModel())
+    : parseWithAI(text, apiKey, getModel());
 }

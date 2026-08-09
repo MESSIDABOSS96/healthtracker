@@ -1,14 +1,22 @@
 // src/features/closure/ClosureRing.tsx
-// The daily motivator: a 3-segment ring (food / lift / cardio) that fills as
-// each component is addressed and celebrates when the day closes.
+// The daily motivator: a 3-segment ring (protein / calories / training) that
+// fills PROPORTIONALLY and celebrates when the day closes.
+//
+// The segments used to be switches — food logged, lifted, did cardio — so the
+// ring only ever showed 0, 1/3, 2/3 or done, and a day where you ate 48g of a
+// 50g protein goal looked identical to one where you ate nothing. Arcs now
+// track their component's progress, which is the whole reason the closure model
+// grades instead of asking yes/no.
 //
 // Design notes:
 //   - Unfilled segments wear their OWN color at low opacity rather than a
 //     neutral track. The empty ring already tells you what the three slots
 //     are, so filling one is a saturation event, not an appearance event.
 //   - The legend under the ring is live state, not decoration: each entry
-//     brightens and gains a check when its segment lands, so "what's left"
-//     is readable without decoding the arcs.
+//     shows how far along it is and gains a check when it's actually met, so
+//     "what's left" is readable without decoding the arcs.
+//   - `met` drives the check, `progress` drives the arc. A segment at 99% is
+//     visibly nearly-full and still unchecked, which is the honest reading.
 //   - Stroke is thinner relative to the radius than a stock activity ring —
 //     at this size a heavy stroke reads as a chart, a light one as a dial.
 //
@@ -22,7 +30,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { Check, Flame } from 'lucide-react';
 import type { DayClosure } from '@/services/closure.svc';
-import { ringSegments } from './ringMath';
+import { ringSegments, SEGMENT_ORDER, type SegmentKey } from './ringMath';
 
 const SIZE = 232;
 const C = SIZE / 2;
@@ -32,21 +40,24 @@ const STROKE = 15;
  *  enough to name the slot on both grounds. */
 const TRACK_OPACITY = 0.24;
 
-type SegKey = 'food' | 'lift' | 'cardio';
-
-const SEGMENT_COLOR: Record<SegKey, string> = {
-  food: 'var(--ring-food)',
-  lift: 'var(--ring-lift)',
-  cardio: 'var(--ring-cardio)',
+const SEGMENT_COLOR: Record<SegmentKey, string> = {
+  protein: 'var(--ring-food)',
+  calories: 'var(--ring-cardio)',
+  training: 'var(--ring-lift)',
 };
 
-const SEGMENT_LABEL: Record<SegKey, string> = {
-  food: 'Food',
-  lift: 'Lift',
-  cardio: 'Cardio',
+const SEGMENT_LABEL: Record<SegmentKey, string> = {
+  protein: 'Protein',
+  calories: 'Calories',
+  training: 'Training',
 };
 
-const ORDER: SegKey[] = ['food', 'lift', 'cardio'];
+/** What the calorie goal means today — a ceiling, a floor, or a band. */
+const CALORIE_HINT: Record<DayClosure['direction'], string> = {
+  lose: 'under',
+  gain: 'over',
+  maintain: 'near',
+};
 
 interface ClosureRingProps {
   closure: DayClosure;
@@ -56,13 +67,15 @@ interface ClosureRingProps {
 export function ClosureRing({ closure, streak }: ClosureRingProps) {
   const reduceMotion = useReducedMotion();
   const segments = ringSegments(C, C, R);
-  const done: Record<SegKey, boolean> = {
-    food: closure.food,
-    lift: closure.lift,
-    cardio: closure.cardio,
+  const component = {
+    protein: closure.protein,
+    calories: closure.calories,
+    training: closure.training,
   };
-  const doneCount = ORDER.filter(k => done[k]).length;
-  const remaining = 3 - doneCount;
+
+  const percent = Math.round(closure.progress * 100);
+  const metCount = SEGMENT_ORDER.filter(k => component[k].met).length;
+  const remaining = 3 - metCount;
 
   // Celebrate only on a live transition into closed — not on mount with an
   // already-closed day (e.g. reopening the app at night).
@@ -80,6 +93,24 @@ export function ClosureRing({ closure, streak }: ClosureRingProps) {
   const spring = reduceMotion
     ? { duration: 0 }
     : { type: 'spring' as const, stiffness: 80, damping: 16 };
+
+  /** The sub-line under each legend entry: how far along, in its own units. */
+  const detail = (key: SegmentKey): string => {
+    if (key === 'protein') {
+      return closure.proteinGoal > 0
+        ? `${Math.round(closure.proteinTotal)}/${Math.round(closure.proteinGoal)}g`
+        : '—';
+    }
+    if (key === 'calories') {
+      return closure.caloriesGoal > 0
+        ? `${closure.caloriesTotal}/${closure.caloriesGoal}`
+        : '—';
+    }
+    if (closure.lift && closure.cardio) return 'lift · cardio';
+    if (closure.lift) return 'lift';
+    if (closure.cardio) return 'cardio';
+    return 'none yet';
+  };
 
   return (
     <div className="flex flex-col items-center">
@@ -104,7 +135,13 @@ export function ClosureRing({ closure, streak }: ClosureRingProps) {
           height={SIZE}
           viewBox={`0 0 ${SIZE} ${SIZE}`}
           role="img"
-          aria-label={`Day progress: ${doneCount} of 3 complete${closure.closed ? ' — day closed' : ''}`}
+          aria-label={
+            closure.closed
+              ? 'Day closed — protein, calories and training all met'
+              : `Day ${percent} percent complete: ${SEGMENT_ORDER.map(
+                  k => `${SEGMENT_LABEL[k]} ${Math.round(component[k].progress * 100)}%`,
+                ).join(', ')}`
+          }
           className="relative"
         >
           {segments.map(seg => (
@@ -118,19 +155,26 @@ export function ClosureRing({ closure, streak }: ClosureRingProps) {
               strokeLinecap="round"
             />
           ))}
-          {segments.map(seg => (
-            <motion.path
-              key={`fill-${seg.key}`}
-              d={seg.path}
-              fill="none"
-              stroke={SEGMENT_COLOR[seg.key]}
-              strokeWidth={STROKE}
-              strokeLinecap="round"
-              initial={false}
-              animate={{ pathLength: done[seg.key] ? 1 : 0, opacity: done[seg.key] ? 1 : 0 }}
-              transition={spring}
-            />
-          ))}
+          {segments.map(seg => {
+            const progress = component[seg.key].progress;
+            return (
+              <motion.path
+                key={`fill-${seg.key}`}
+                d={seg.path}
+                fill="none"
+                stroke={SEGMENT_COLOR[seg.key]}
+                strokeWidth={STROKE}
+                strokeLinecap="round"
+                initial={false}
+                // Opacity is binary on "has any progress at all" rather than
+                // scaled: a partial arc should be a SHORT full-strength arc,
+                // not a faded full-length one, or partial and unfilled blur
+                // into each other.
+                animate={{ pathLength: progress, opacity: progress > 0 ? 1 : 0 }}
+                transition={spring}
+              />
+            );
+          })}
         </svg>
 
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
@@ -146,8 +190,8 @@ export function ClosureRing({ closure, streak }: ClosureRingProps) {
           ) : (
             <>
               <span className="stat text-[56px] leading-none font-semibold text-text">
-                {doneCount}
-                <span className="text-faint text-[30px] font-medium">/3</span>
+                {percent}
+                <span className="text-faint text-[30px] font-medium">%</span>
               </span>
               <span className="mt-2 text-[13px] text-muted">
                 {remaining === 1 ? 'one left to close' : `${remaining} left to close`}
@@ -157,26 +201,41 @@ export function ClosureRing({ closure, streak }: ClosureRingProps) {
         </div>
       </motion.div>
 
-      {/* Live legend — which slots are filled, in words. */}
-      <ul className="mt-5 flex items-center gap-5">
-        {ORDER.map(key => (
-          <li
-            key={key}
-            className="flex items-center gap-1.5 text-[13px] transition-colors duration-300 ease-out-soft"
-            style={{ color: done[key] ? SEGMENT_COLOR[key] : 'var(--faint)' }}
-          >
-            {done[key] ? (
-              <Check size={13} strokeWidth={3} aria-hidden />
-            ) : (
-              <span
-                aria-hidden
-                className="inline-block h-[7px] w-[7px] rounded-full"
-                style={{ backgroundColor: SEGMENT_COLOR[key], opacity: 0.5 }}
-              />
-            )}
-            <span className={done[key] ? 'font-medium' : ''}>{SEGMENT_LABEL[key]}</span>
-          </li>
-        ))}
+      {/* Live legend — which slots are filled, in words and numbers.
+          A 3-column grid rather than a flex row: "1840/2000 under" is much
+          wider than "Protein", and in a row one long item pushes the others off
+          a narrow phone. Equal columns cap each item instead. */}
+      <ul className="mt-5 grid w-full max-w-[330px] grid-cols-3 gap-x-2">
+        {SEGMENT_ORDER.map(key => {
+          const { met } = component[key];
+          const hint = key === 'calories' && closure.caloriesGoal > 0
+            ? CALORIE_HINT[closure.direction]
+            : null;
+          return (
+            <li
+              key={key}
+              className="flex min-w-0 flex-col items-center gap-0.5 text-[13px] transition-colors duration-300 ease-out-soft"
+              style={{ color: met ? SEGMENT_COLOR[key] : 'var(--faint)' }}
+            >
+              <span className="flex items-center gap-1.5">
+                {met ? (
+                  <Check size={13} strokeWidth={3} aria-hidden />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="inline-block h-[7px] w-[7px] rounded-full"
+                    style={{ backgroundColor: SEGMENT_COLOR[key], opacity: 0.5 }}
+                  />
+                )}
+                <span className={met ? 'font-medium' : ''}>{SEGMENT_LABEL[key]}</span>
+              </span>
+              <span className="flex max-w-full items-baseline gap-1 text-[11.5px]">
+                <span className="stat truncate text-muted">{detail(key)}</span>
+                {hint && <span className="shrink-0 text-faint">{hint}</span>}
+              </span>
+            </li>
+          );
+        })}
       </ul>
 
       {streak !== undefined && streak > 0 && (
