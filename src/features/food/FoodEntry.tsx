@@ -393,21 +393,32 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
                     {TIER_LABEL[r.tier]}
                   </span>
                 </span>
-                <span className="stat shrink-0 text-[15px] font-semibold text-text">
-                  {Math.round(r.parsed.calories)}
+                {/* The macros carry their P/C/F letters, so a bare bold figure
+                    beside them reads as one more unlabelled quantity. It's the
+                    number the whole row is about — it gets its unit. */}
+                <span className="shrink-0 text-[15px] font-semibold text-text">
+                  <span className="stat">{Math.round(r.parsed.calories)}</span>
+                  <span className="ml-1 text-[11px] font-medium text-muted">kcal</span>
                 </span>
                 {/* The list is now short by construction — your own foods, plus
                     at most one table row — so the top entry is what Enter will
                     log rather than the first of six near-identical guesses.
-                    Saying so turns the list from a decision into a receipt. */}
-                {i === 0 && (
-                  <span
-                    aria-hidden
-                    className="hidden shrink-0 rounded-xs border border-hairline px-1.5 py-0.5 text-[10px] font-medium text-faint [@media(hover:hover)]:block"
-                  >
-                    ↵
-                  </span>
-                )}
+                    Saying so turns the list from a decision into a receipt.
+
+                    Rendered on every row and merely made invisible below the
+                    first: showing it only on row 1 indented that row's calorie
+                    figure by the badge's width and broke the numeric column the
+                    list is meant to be scanned down. */}
+                <span
+                  aria-hidden
+                  className={cn(
+                    'hidden shrink-0 rounded-xs border px-1.5 py-0.5 text-[10px] font-medium',
+                    '[@media(hover:hover)]:block',
+                    i === 0 ? 'border-hairline text-faint' : 'border-transparent text-transparent',
+                  )}
+                >
+                  ↵
+                </span>
               </button>
             </li>
           ))}

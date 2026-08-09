@@ -6,7 +6,8 @@
 // logs, a trailing × dismisses. They can't nest — a <button> inside a <button>
 // is invalid and browsers reparent it — so the chip is a wrapper element with
 // two siblings inside, and the wrapper carries the rounded shell that used to
-// live on the button itself.
+// live on the button itself. The × is positioned OUT of flow so the chip keeps
+// exactly the dimensions it has without one.
 //
 // The × only materializes for a real pointer. It's revealed on hover, which a
 // touch screen cannot express, and rendering it permanently would put a delete
@@ -88,20 +89,25 @@ export const QuickLogChip = forwardRef<HTMLButtonElement, QuickLogChipProps>(
             'transition-transform duration-150 ease-out-soft',
             'focus:outline-none',
             food.photoKey && 'pl-1.5',
-            // Leave room for the × so a long name doesn't slide under it.
-            '[@media(hover:hover)]:group-hover/chip:pr-1',
           )}
         >
           {label}
         </button>
 
+        {/* Absolutely positioned, so it costs the chip no width. In flow it
+            padded EVERY chip by its own size the whole time — it renders at
+            opacity 0, and a transparent button still occupies its box. Taking
+            it out of flow also means no chip changes width on hover, which in a
+            horizontally-scrolling row would shove its neighbours sideways under
+            the pointer. It rides on the chip's own hovered background so a name
+            long enough to reach it is masked rather than crossed out. */}
         <button
           type="button"
           onClick={() => onRemove(food)}
           aria-label={`Remove ${food.name} from shortcuts`}
           className={cn(
-            'mr-1.5 hidden h-6 w-6 shrink-0 place-items-center rounded-full',
-            'text-faint',
+            'absolute right-1 top-1/2 hidden h-5 w-5 -translate-y-1/2 place-items-center',
+            'rounded-full bg-surface-2 text-faint',
             '[@media(hover:hover)]:grid',
             '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/chip:opacity-100',
             'focus-visible:opacity-100',
@@ -110,7 +116,7 @@ export const QuickLogChip = forwardRef<HTMLButtonElement, QuickLogChipProps>(
             'focus:outline-none',
           )}
         >
-          <X size={13} strokeWidth={2.5} aria-hidden />
+          <X size={12} strokeWidth={2.5} aria-hidden />
         </button>
       </div>
     );
