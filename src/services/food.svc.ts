@@ -12,6 +12,7 @@ import { normalizeFoodName } from '@/lib/normalizeFoodName';
 import { deletePhoto } from '@/lib/photoStore';
 import type { ParsedFood } from './parse.svc';
 import { logMeal } from './meals.svc';
+import { markDeleted, markManyWritten, markWritten } from './syncMeta.svc';
 
 /**
  * Convert a confirmed parse into per-serving food data + a servings count.
@@ -87,6 +88,7 @@ export async function logParsedFood(params: {
     };
   }
   await db.foods.put(food);
+  await markWritten('foods', food.id);
   const entryId = await logMeal({ food, servings: basis.servings, bucket, dayKey });
   return { food, entryId };
 }
@@ -102,6 +104,7 @@ export async function logParsedFood(params: {
  */
 export async function hideFoodFromChips(id: string): Promise<void> {
   await db.foods.update(id, { hiddenAt: Date.now() });
+  await markWritten('foods', id);
 }
 
 /**
@@ -122,12 +125,16 @@ export async function deleteFood(id: string): Promise<void> {
   const food = await db.foods.get(id);
   if (!food) return;
 
+  const stamped = await db.mealEntries.where('foodId').equals(id).primaryKeys();
   await db.mealEntries
     .where('foodId')
     .equals(id)
     .modify(entry => {
       if (!entry.foodName) entry.foodName = food.name;
     });
+  // The backfill is a real edit to those entries — without marking them, the
+  // other device deletes the food and is left with the "—" rows this avoids.
+  await markManyWritten('mealEntries', stamped as string[]);
 
   if (food.photoKey) {
     try {
@@ -137,6 +144,7 @@ export async function deleteFood(id: string): Promise<void> {
     }
   }
   await db.foods.delete(id);
+  await markDeleted('foods', id);
 }
 
 /**
@@ -163,6 +171,7 @@ export async function updateFood(
     next.normalizedName = normalizeFoodName(trimmed);
   }
   await db.foods.update(id, next);
+  await markWritten('foods', id);
 }
 
 /** Undo a chip dismissal — see hideFoodFromChips. */
@@ -170,6 +179,7 @@ export async function unhideFoodInChips(id: string): Promise<void> {
   await db.foods.where('id').equals(id).modify(f => {
     delete f.hiddenAt;
   });
+  await markWritten('foods', id);
 }
 
 /** Substring search, case-insensitive, ordered by name. */

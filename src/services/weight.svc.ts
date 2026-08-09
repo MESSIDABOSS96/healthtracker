@@ -4,15 +4,18 @@
 
 import { db } from '@/db/db';
 import type { WeightEntry } from '@/db/schema';
+import { markDeleted, markWritten } from './syncMeta.svc';
 
 export async function upsertWeight(dayKey: string, weight: number): Promise<void> {
   if (!Number.isFinite(weight) || weight <= 0) return;
   const entry: WeightEntry = { dayKey, weight, loggedAt: Date.now() };
   await db.weightEntries.put(entry);
+  await markWritten('weightEntries', dayKey);
 }
 
 export async function deleteWeight(dayKey: string): Promise<void> {
   await db.weightEntries.delete(dayKey);
+  await markDeleted('weightEntries', dayKey);
 }
 
 export function getWeight(dayKey: string): Promise<WeightEntry | undefined> {

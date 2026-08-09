@@ -11,6 +11,7 @@
 //     from the target; a misleading date is worse than no date.
 
 import { db } from '@/db/db';
+import { markWritten } from './syncMeta.svc';
 import type { LongTermGoals, WeightDirection, WeightEntry } from '@/db/schema';
 import { computeEma } from './weight.svc';
 import { addDays, keyToDate } from '@/lib/dayKey';
@@ -70,6 +71,7 @@ export async function saveLongTermGoals(
     updatedAt: Date.now(),
   };
   await db.longTermGoals.put(row);
+  await markWritten('longTermGoals', SINGLETON_ID);
 }
 
 // ---------------------------------------------------------------------------

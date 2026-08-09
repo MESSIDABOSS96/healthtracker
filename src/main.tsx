@@ -7,6 +7,7 @@ import { wireBeforeInstallPrompt } from './lib/installMode';
 import { LAST_OPENED_KEY, PREV_OPENED_KEY } from './lib/storageKeys';
 import { applyTheme, watchSystemTheme } from './lib/theme';
 import { seedGoalsIfAbsent } from './services/goals.svc';
+import { initSyncLifecycle } from './features/sync/useSync';
 
 /**
  * initApp() — RESEARCH.md §6 startup-invariant sequence.
@@ -95,6 +96,14 @@ async function initApp(): Promise<void> {
   } catch (err) {
     console.error('[initApp] goals seed failed', err);
   }
+
+  // Step 6.6 — sync lifecycle. Deliberately NOT awaited: it makes network
+  // calls, and this sits before createRoot, so awaiting it would put the first
+  // paint behind a round trip — the same mistake persist() already cost us
+  // once. Sync writes into Dexie and useLiveQuery refires, so the UI catches up
+  // on its own; a signed-in user sees local data first and remote data a moment
+  // later, which is the correct order anyway. No-ops when sync isn't configured.
+  initSyncLifecycle();
 
   // Step 7 — render. Dexie opens lazily on first useLiveQuery (Plan 01-02 db.ts);
   // no eager db.open() needed before render.

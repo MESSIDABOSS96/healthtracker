@@ -1,6 +1,8 @@
 # VZN
 
-A fully-local, offline-first PWA used independently by two friends (each installs it on their own phone — no backend, no auth, no shared data). Used on **both phone and desktop** by the same people.
+An offline-first PWA used independently by two friends, each on their own account. Used on **both phone and desktop** by the same people, with their data kept in step across those devices.
+
+**It was fully local until sync arrived, and it still runs that way.** With no Supabase credentials in the build, `supabase` is null, the sync card hides itself, and every screen behaves exactly as it did before — that's a supported configuration, not a fallback. Dexie remains the source of truth for the UI on every path; sync writes into it and `useLiveQuery` refires. Nothing above `services/sync.svc.ts` knows the network exists.
 
 **Product name vs storage identity:** the app is VZN, but the Dexie database is still `HealthTrackerDB` and localStorage keys still use the `healthtracker:` prefix. Those are addresses of data already in users' browsers — renaming them doesn't rename anything, it points the app at an empty store. They are frozen. Only user-visible copy carries the new name.
 
@@ -38,6 +40,7 @@ React 19 + Vite 7 + TypeScript + Dexie 4 (+ `useLiveQuery`) + Tailwind CSS 4 + `
 | Screens | `/daily` and `/day/:dayKey` are both thin wrappers over `features/day/DayScreen` — one screen, so stepping days with the arrows or clicking a closure-grid square always lands somewhere identical. `/dashboard` (trends, lazy), `/settings` |
 | Day routing | `lib/dayRoutes.ts` — `dayPath()` is the single answer to "where does this day live" (today → `/daily`, else `/day/:key`). One URL per day. |
 | Backup | `export.svc.ts` / `import.svc.ts` — v2 envelope, current schemaVersion only on import |
+| **Sync** | `services/sync.svc.ts` (push/pull/realtime), `syncMeta.svc.ts` (change tracking), `auth.svc.ts` (Google OAuth), `lib/supabase.ts` (client, null when unconfigured), `features/sync/useSync.ts` (lifecycle + hooks), `supabase/schema.sql` (run once) |
 
 ## Closure
 
@@ -93,7 +96,9 @@ Things that will break if you change them casually:
 7. **AI-parsed food never auto-saves** — a model result always goes through the editable confirm form, with the 4/4/9 macro sanity check wired. The deterministic tiers are exempt and log straight through with an undo: the rule guards against *hallucinated* numbers, and arithmetic on figures the user typed, a row they already confirmed once, or a fixed table row is not a hallucination. Do not extend the confirm step back over them — the tap is the entire latency budget for those paths.
 8. **One `useLiveQuery` per consumer, never per day/cell** — dashboard and grids use single range queries.
 9. **Never rename the Dexie database or the `healthtracker:` localStorage prefix** — see the note at the top. Product renames are cosmetic; storage identifiers are not.
-10. **The phone layout is frozen** — every desktop change goes behind `lg:`. The two-column screens rely on column wrappers sharing the same 20px rhythm as their container, so below `lg` they collapse into a single evenly-spaced run. Don't "simplify" that into a grid with explicit row placement; it reorders the phone.
+10. **Every write to a synced table must call `markWritten`/`markDeleted`** — a write that skips it exists on one device forever, and nothing on screen says so. Deletes especially: an absent row and an unseen row are indistinguishable, so without a tombstone the next pull cheerfully restores what the user just deleted. The calls are explicit at each write site rather than intercepted by a Dexie hook, precisely so a missing one is greppable.
+11. **Never mark a default as a local change.** `seedGoalsIfAbsent` writes defaults on any device with no goals row — which is the exact state of a new device about to pull an existing account. Marking it dirty stamps a fresh clock, and the first push overwrites the user's real goals on the server before the pull runs. Same trap for any future seed.
+12. **The phone layout is frozen** — every desktop change goes behind `lg:`. The two-column screens rely on column wrappers sharing the same 20px rhythm as their container, so below `lg` they collapse into a single evenly-spaced run. Don't "simplify" that into a grid with explicit row placement; it reorders the phone.
 
 ## Design
 
@@ -129,6 +134,8 @@ Mobile-first: the shell is a fixed `h-dvh` column — header and tab bar are fle
 
 ## Explicitly Out of Scope
 
-Shared data between the two users, backend/auth/sync, Hevy auto-sync (deferred — needs Hevy Pro; `source: 'hevy'` field reserved), **online** nutrition-DB APIs and barcode scanning, photo food recognition, fuzzy library merging, full lift tracking (lives in Hevy), notifications, social features. PT rehab and steps tracking are retired v1 features — do not resurrect.
+Shared data *between* the two users (sync is per-account — two accounts never see each other's food), Hevy auto-sync (deferred — needs Hevy Pro; `source: 'hevy'` field reserved), **online** nutrition-DB APIs and barcode scanning, photo food recognition, fuzzy library merging, full lift tracking (lives in Hevy), notifications, social features. PT rehab and steps tracking are retired v1 features — do not resurrect.
+
+Note what changed: this list used to read "backend/auth/sync" flat. That line was written when the app was one device per person, and it held right up until it didn't — the same person on a phone and a laptop had two separate histories with no way to reconcile them, because export/import replaces rather than merges. Per-account sync is the fix for *that*, and it is a different thing from what the line was guarding against: no shared data, no social layer, no server-side logic. The server stores opaque rows it never reads.
 
 Note the qualifier on nutrition DBs: this used to read "nutrition DBs" flat, written when AI parsing was expected to carry food lookup on its own. It couldn't — a network round trip per banana is too slow to be used, and a model returns a slightly different number each time, which turns a week of identical breakfasts into a fake trend. The **bundled offline table** that replaced it is a different thing from what that line was guarding against: no API, no account, no network, no barcode hardware — just data compiled into the bundle. A nutrition DB you have to *call* is still out.

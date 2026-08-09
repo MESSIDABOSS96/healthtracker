@@ -12,6 +12,7 @@
 import { db } from '@/db/db';
 import { savePhotoAs } from '@/lib/photoStore';
 import type { ExportEnvelope } from './export.svc';
+import { seedSyncMetaForExistingData } from './syncMeta.svc';
 
 export class ImportError extends Error {
   constructor(message: string) {
@@ -76,18 +77,25 @@ export async function importAll(json: string): Promise<ImportSummary> {
   }
 
   // Step 2 — Atomic table restore. Every await inside is a Dexie call.
+  //
+  // syncMeta is cleared with the data it describes. Leaving it would strand
+  // change tracking against rows that no longer exist and, worse, leave
+  // tombstones for ids the restore just brought back — the next push would
+  // delete them again on every other device. Step 3 re-seeds it so the restored
+  // state uploads as the current truth, which is what restoring a backup means.
   await db.transaction(
     'rw',
     [
       db.foods, db.mealEntries, db.dailyCheckins, db.weightEntries, db.goals,
       db.longTermGoals, db.ptTemplates, db.ptSessions, db.stepEntries, db.liftCheckins,
+      db.syncMeta,
     ],
     async () => {
       await Promise.all([
         db.foods.clear(), db.mealEntries.clear(), db.dailyCheckins.clear(),
         db.weightEntries.clear(), db.goals.clear(), db.longTermGoals.clear(),
         db.ptTemplates.clear(), db.ptSessions.clear(), db.stepEntries.clear(),
-        db.liftCheckins.clear(),
+        db.liftCheckins.clear(), db.syncMeta.clear(),
       ]);
       await Promise.all([
         db.foods.bulkPut(d.foods),
@@ -103,6 +111,11 @@ export async function importAll(json: string): Promise<ImportSummary> {
       ]);
     },
   );
+
+  // Step 3 — mark the restored rows for upload. Outside the transaction above
+  // because it reads every table back; harmless if sync isn't configured, since
+  // nothing ever reads the flags.
+  await seedSyncMetaForExistingData();
 
   return {
     foods: d.foods.length,

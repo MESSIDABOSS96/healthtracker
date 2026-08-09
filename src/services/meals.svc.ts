@@ -5,6 +5,7 @@
 
 import { db } from '@/db/db';
 import type { Food, MealEntry, MealBucket } from '@/db/schema';
+import { markDeleted, markWritten } from './syncMeta.svc';
 
 export interface DailyTotals {
   calories: number;
@@ -52,6 +53,12 @@ export async function logMeal(params: {
       delete f.hiddenAt;
     });
   }
+  // One clock for both rows: the entry and the food's usage bump are a single
+  // logical action, and stamping them a millisecond apart would order them
+  // against each other on the other device for no reason.
+  const now = Date.now();
+  await markWritten('mealEntries', entry.id, now);
+  await markWritten('foods', food.id, now);
   return entry.id;
 }
 
@@ -69,11 +76,14 @@ export async function undoMealLog(entryId: string): Promise<void> {
   const entry = await db.mealEntries.get(entryId);
   if (!entry) return;
   await db.mealEntries.delete(entryId);
+  const now = Date.now();
+  await markDeleted('mealEntries', entryId, now);
   const food = await db.foods.get(entry.foodId);
   if (food) {
     await db.foods.update(food.id, {
       usageCount: Math.max(0, (food.usageCount ?? 1) - 1),
     });
+    await markWritten('foods', food.id, now);
   }
 }
 
@@ -126,10 +136,12 @@ export async function updateMealEntry(
     computedFatG: totals.fatG,
   };
   await db.mealEntries.put(updated);
+  await markWritten('mealEntries', id);
 }
 
 export async function deleteMealEntry(id: string): Promise<void> {
   await db.mealEntries.delete(id);
+  await markDeleted('mealEntries', id);
 }
 
 // ------- Reads -------

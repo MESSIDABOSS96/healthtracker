@@ -11,6 +11,7 @@ import type {
   WeightEntry,
   Goals,
   LongTermGoals,
+  SyncMeta,
 } from './schema';
 import { normalizeFoodName } from '@/lib/normalizeFoodName';
 
@@ -69,6 +70,9 @@ export class HealthTrackerDB extends Dexie {
   weightEntries!: Table<WeightEntry, string>;
   goals!: Table<Goals, string>;
   longTermGoals!: Table<LongTermGoals, string>;
+
+  /** Sync change-tracking sidecar (v4) — see SyncMeta in schema.ts. */
+  syncMeta!: Table<SyncMeta, [string, string]>;
 
   constructor() {
     // FROZEN. The app is called VZN now, but this string is the IndexedDB
@@ -131,6 +135,19 @@ export class HealthTrackerDB extends Dexie {
     // Purely additive — no upgrade() needed.
     this.version(3).stores({
       'longTermGoals': 'id',
+    });
+
+    // Sync change-tracking sidecar. Additive: no upgrade() and no change to
+    // any existing store, so a device that has never signed in behaves exactly
+    // as it did before — the table simply stays empty.
+    //
+    // Rows already on the device when sync arrives have no syncMeta, which is
+    // indistinguishable from "not yet written". That is the correct reading:
+    // the first sign-in seeds a dirty row for every existing record so the
+    // local history uploads once, rather than being silently outranked by an
+    // empty server.
+    this.version(4).stores({
+      'syncMeta': '[table+rowId], dirty, updatedAt',
     });
   }
 }

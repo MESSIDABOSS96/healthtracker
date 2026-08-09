@@ -11,6 +11,7 @@ import { ApiKeyCard } from '@/features/settings/ApiKeyCard';
 import { ExportCard } from '@/features/settings/ExportCard';
 import { ImportCard } from '@/features/settings/ImportCard';
 import { FoodLibraryCard } from '@/features/settings/FoodLibraryCard';
+import { SyncCard } from '@/features/settings/SyncCard';
 
 function isAndroid(): boolean {
   return /android/i.test(navigator.userAgent);
@@ -60,6 +61,10 @@ export function SettingsScreen() {
             )}
           </SettingsCard>
         )}
+
+        {/* Above the goals: it's the setting that decides whether every other
+            setting and every log survives moving to another device. */}
+        <SyncCard />
 
         <GoalsForm />
 

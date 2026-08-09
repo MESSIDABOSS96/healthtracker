@@ -6,14 +6,20 @@
 
 import { db } from '@/db/db';
 import type { CheckinKind, DailyCheckin } from '@/db/schema';
+import { markDeleted, markWritten } from './syncMeta.svc';
 
 export async function toggleCheckin(dayKey: string, kind: CheckinKind): Promise<void> {
   const existing = await db.dailyCheckins.get([dayKey, kind]);
   if (existing) {
     await db.dailyCheckins.delete([dayKey, kind]);
+    // Un-checking is a delete, so it needs a tombstone like any other. Without
+    // one, the next pull sees a row the other device still has and helpfully
+    // re-checks the day.
+    await markDeleted('dailyCheckins', [dayKey, kind]);
   } else {
     const row: DailyCheckin = { dayKey, kind, source: 'manual', loggedAt: Date.now() };
     await db.dailyCheckins.put(row);
+    await markWritten('dailyCheckins', [dayKey, kind]);
   }
 }
 
