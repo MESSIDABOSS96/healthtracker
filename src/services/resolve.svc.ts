@@ -84,31 +84,43 @@ function fromCalculator(q: FoodQuery): Resolution {
 // Library — a food this user has already confirmed
 // ---------------------------------------------------------------------------
 
+/**
+ * Every word you typed has to appear in the name, in any order — "chicken"
+ * finds both "Chicken breast, Tesco" and "Tesco chicken breast", and "tesco
+ * chicken" narrows to the one.
+ *
+ * The old prefix-only match answered a different question. It could only find
+ * names that STARTED with what you typed, which quietly failed the case this
+ * tier exists for: you weigh two different chicken breasts once each, and from
+ * then on neither comes back unless you retype its first word exactly. Note
+ * that the dedupe key's refusal to fuzzy-match is NOT the same rule — that one
+ * guards an automatic merge, where a false positive silently corrupts a food's
+ * stored facts. Here nothing merges and nothing is written; the candidates are
+ * shown and you pick. Being generous costs a row on screen, not your data.
+ *
+ * A personal library is a few hundred rows at most, so this scans rather than
+ * hunting an index. Hidden-from-chips foods deliberately still resolve —
+ * dismissing a chip tidies the shortcut row, it doesn't retire the food.
+ */
 async function fromLibrary(q: FoodQuery): Promise<Resolution[]> {
   const normalized = normalizeFoodName(q.name);
   if (!normalized) return [];
+  const queryTokens = normalized.split(' ').filter(Boolean);
+  if (!queryTokens.length) return [];
 
-  // Exact match first, then prefix. Substring matching is deliberately absent:
-  // it's the same false-merge risk the auto-library dedupe already refuses.
-  const exact = await db.foods.where('normalizedName').equals(normalized).toArray();
-  const prefix = await db.foods
-    .where('normalizedName')
-    .startsWith(normalized)
-    .limit(6)
-    .toArray();
-
-  const seen = new Set<string>();
-  const foods: Food[] = [];
-  for (const f of [...exact, ...prefix]) {
-    if (seen.has(f.id)) continue;
-    seen.add(f.id);
-    foods.push(f);
-  }
+  const all = await db.foods.toArray();
+  const foods = all.filter(f => {
+    const nameTokens = f.normalizedName.split(' ').filter(Boolean);
+    return queryTokens.every(qt => nameTokens.some(nt => nt.startsWith(qt)));
+  });
   if (!foods.length) return [];
 
-  // Most-used first — with two people eating the same twelve things, frequency
-  // is a better prior than alphabetical.
-  foods.sort((a, b) => (b.usageCount ?? 0) - (a.usageCount ?? 0));
+  // An exact name match is the one you meant; past that, most-used first —
+  // with two people eating the same twelve things, frequency beats alphabetical.
+  foods.sort((a, b) => {
+    const exact = Number(b.normalizedName === normalized) - Number(a.normalizedName === normalized);
+    return exact || (b.usageCount ?? 0) - (a.usageCount ?? 0);
+  });
 
   return Promise.all(foods.slice(0, 5).map(food => toLibraryResolution(food, q)));
 }
@@ -217,13 +229,24 @@ export async function resolveInstant(text: string): Promise<Resolution[]> {
 
   const results = [...library];
   const seen = new Set(library.map(r => normalizeFoodName(r.parsed.name)));
+
+  // The table contributes ONE row, not six. Its runners-up are near-duplicates
+  // of the winner — typing "egg" offered chicken, duck, goose, quail and turkey,
+  // which is a taxonomy quiz standing between the user and logging breakfast.
+  // Library hits are the opposite case and are all kept: those are foods this
+  // user weighed and confirmed, so two entries for "chicken" are two real
+  // options they need to choose between, not noise.
+  //
+  // Still SEARCHED six deep, because fromTable rejects entries it can't answer
+  // the question with — a count like "2 eggs" needs a known portion weight, and
+  // the best-named row doesn't always carry one. The next candidate is a better
+  // answer than no answer.
   for (const entry of table) {
     const resolution = fromTable(entry, q);
     if (!resolution) continue;
-    const key = normalizeFoodName(resolution.parsed.name);
-    if (seen.has(key)) continue;
-    seen.add(key);
+    if (seen.has(normalizeFoodName(resolution.parsed.name))) continue;
     results.push(resolution);
+    break;
   }
   return results.slice(0, 6);
 }

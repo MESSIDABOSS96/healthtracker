@@ -91,6 +91,19 @@ export async function logParsedFood(params: {
   return { food, entryId };
 }
 
+/**
+ * Dismiss a food from the Recent/Frequent chip rows.
+ *
+ * Deliberately not `deleteFood`. A MealEntry stores only a foodId — no name
+ * snapshot — so dropping the library row leaves every past log of it rendering
+ * as "—" while its calories still count toward those days' totals. The chips
+ * are a convenience surface; removing something from them should not rewrite
+ * history. Logging the food again clears the flag and brings the chip back.
+ */
+export async function hideFoodFromChips(id: string): Promise<void> {
+  await db.foods.update(id, { hiddenAt: Date.now() });
+}
+
 export async function deleteFood(id: string): Promise<void> {
   const food = await db.foods.get(id);
   if (!food) return;

@@ -18,9 +18,16 @@ interface QuickLogChipRowProps {
   foods: Food[] | undefined;
   emptyCopy?: string;
   onLog: (food: Food) => void;
+  onRemove?: (food: Food) => void;
 }
 
-export function QuickLogChipRow({ label, foods, emptyCopy, onLog }: QuickLogChipRowProps) {
+export function QuickLogChipRow({
+  label,
+  foods,
+  emptyCopy,
+  onLog,
+  onRemove,
+}: QuickLogChipRowProps) {
   if (foods === undefined) return null;
 
   if (foods.length === 0) {
@@ -38,7 +45,7 @@ export function QuickLogChipRow({ label, foods, emptyCopy, onLog }: QuickLogChip
       <p className={`${eyebrow} px-4 lg:px-0`}>{label}</p>
       <div className="flex gap-2 overflow-x-auto px-4 pb-1 lg:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {foods.map(f => (
-          <QuickLogChip key={f.id} food={f} onLog={onLog} />
+          <QuickLogChip key={f.id} food={f} onLog={onLog} onRemove={onRemove} />
         ))}
       </div>
     </div>

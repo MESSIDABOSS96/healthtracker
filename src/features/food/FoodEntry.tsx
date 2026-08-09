@@ -396,6 +396,18 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
                 <span className="stat shrink-0 text-[15px] font-semibold text-text">
                   {Math.round(r.parsed.calories)}
                 </span>
+                {/* The list is now short by construction — your own foods, plus
+                    at most one table row — so the top entry is what Enter will
+                    log rather than the first of six near-identical guesses.
+                    Saying so turns the list from a decision into a receipt. */}
+                {i === 0 && (
+                  <span
+                    aria-hidden
+                    className="hidden shrink-0 rounded-xs border border-hairline px-1.5 py-0.5 text-[10px] font-medium text-faint [@media(hover:hover)]:block"
+                  >
+                    ↵
+                  </span>
+                )}
               </button>
             </li>
           ))}

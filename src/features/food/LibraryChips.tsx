@@ -8,6 +8,7 @@ import type { Food } from '@/db/schema';
 import { QuickLogChipRow } from './QuickLogChipRow';
 import { useRecentFoods, useFrequentFoods } from './hooks';
 import { logMeal, getLastServingsForFood } from '@/services/meals.svc';
+import { hideFoodFromChips } from '@/services/food.svc';
 import { inferBucket } from '@/lib/dayKey';
 
 const DOUBLE_TAP_GUARD_MS = 1500;
@@ -27,6 +28,13 @@ export function LibraryChips({ dayKey }: { dayKey: string }) {
     await logMeal({ food, servings, bucket: inferBucket(), dayKey });
   };
 
+  // Dismiss, not delete — see hideFoodFromChips. Silent, matching the meal-row
+  // delete (UI-SPEC §"Destructive confirmations: NONE"): nothing is destroyed,
+  // and logging the food again brings the chip straight back.
+  const handleRemove = async (food: Food) => {
+    await hideFoodFromChips(food.id);
+  };
+
   // Frequent row hides foods already shown in Recent to avoid duplicate chips.
   const recentIds = new Set((recent ?? []).map(f => f.id));
   const frequentFiltered = frequent?.filter(f => !recentIds.has(f.id));
@@ -42,8 +50,14 @@ export function LibraryChips({ dayKey }: { dayKey: string }) {
         foods={recent}
         emptyCopy="Foods you log will show up here for one-tap re-logging."
         onLog={handleLog}
+        onRemove={food => void handleRemove(food)}
       />
-      <QuickLogChipRow label="Frequent" foods={frequentFiltered} onLog={handleLog} />
+      <QuickLogChipRow
+        label="Frequent"
+        foods={frequentFiltered}
+        onLog={handleLog}
+        onRemove={food => void handleRemove(food)}
+      />
     </div>
   );
 }

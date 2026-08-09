@@ -81,6 +81,15 @@ export interface Food {
   parseSource?: ParseSource;
   usageCount: number; // times logged — drives Frequent surfacing
   lastUsedAt: number; // epoch ms — drives Recent surfacing
+  /**
+   * Dismissed from the Recent/Frequent chip rows. NOT a delete: past meal
+   * entries hold only a foodId (no name snapshot), so removing the row would
+   * turn logged history into unlabelled "—" lines that still count toward day
+   * totals. Hiding keeps the history readable and is reversible by logging the
+   * food again. Unindexed on purpose — the chip queries already scan a small
+   * page, and a new index would mean a schema version bump for a filter.
+   */
+  hiddenAt?: number;
   photoKey?: string; // filename in OPFS — NEVER a Blob (Pitfall #6)
   createdAt: number;
 }
