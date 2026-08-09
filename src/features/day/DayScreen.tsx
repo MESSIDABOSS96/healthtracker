@@ -14,8 +14,13 @@
 // and lists, not a dashboard — a 1150px-wide weight input would be absurd. The
 // Dashboard is where the extra width earns its keep.
 //
-// Freeform entry is today-only (per D-20: no backdated parsing). The library
-// chips cover "forgot to log yesterday" without spending a parse.
+// Freeform entry used to be today-only, on the theory that the library chips
+// covered "forgot to log yesterday" without spending a parse. They don't: a new
+// account has an empty library, so a past day offered no way to log food at all
+// — the screen said "type what you ate above" above nothing. And three of the
+// four resolver tiers have no date in them anyway; 4/4/9 arithmetic and a USDA
+// row are the same numbers on Tuesday as they are today. The composer renders
+// for every day now.
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ClosureRing } from '@/features/closure/ClosureRing';
@@ -64,7 +69,7 @@ export function DayScreen({ dayKey, todayKey }: DayScreenProps) {
         </Card>
 
         <div className="space-y-4">
-          {isToday && <FoodEntry dayKey={dayKey} />}
+          <FoodEntry dayKey={dayKey} />
           <LibraryChips dayKey={dayKey} />
         </div>
 
