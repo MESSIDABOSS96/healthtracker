@@ -101,23 +101,34 @@ body,
 /* Installed to the Home Screen there is no browser chrome for `h-dvh` to track,
    and iOS reports a dvh shorter than the window there — which left a strip of
    bare canvas along the bottom, below the tab bar, reading as a blue footer
-   bolted under the app. In standalone the window IS the viewport, so measure
-   against it directly: 100% resolves up the #root → body → html chain to the
-   real window height. `h-dvh` stays the default for browser tabs, where
-   tracking the collapsing toolbar is the whole point. */
-@media (display-mode: standalone) {
-  .app-shell {
-    height: 100%;
-  }
-  /* The wash has to be measured the same way the shell is, or the shell grows
-     past the end of its own gradient and the last strip falls back to flat
-     --bg — trading the blue footer for a grey one. 100lvh is the large
-     viewport, which is what the 100% chain above resolves against, and it also
-     keeps the edge strips (sized in the same unit, anchored to opposite edges)
-     continuing the shell's gradient exactly rather than banding across it. */
-  .sky {
-    background-size: 100% 100lvh;
-  }
+   bolted under the app.
+
+   Keyed off the `.standalone` class set pre-paint in index.html rather than
+   `@media (display-mode: standalone)` directly: the class ORs that media query
+   with `navigator.standalone`, because iOS has been unreliable about matching
+   the standardised feature in exactly the context this rule exists for.
+
+   `position: fixed` rather than a taller height unit, because every unit here
+   is a guess at what iOS thinks the window is — and that guess is what already
+   went wrong once. A fixed box with all four insets pinned is sized by the
+   viewport the browser hands out, and a chromeless standalone app has nothing
+   to subtract from it. `height: auto` is load-bearing: an explicit height beats
+   inset-derived sizing, so `h-dvh` would otherwise still win. */
+.standalone .app-shell {
+  position: fixed;
+  inset: 0;
+  height: auto;
+}
+
+/* The wash has to be measured the same way the shell is, or the shell reaches
+   past the end of its own gradient and the last strip falls back to flat --bg,
+   trading the blue footer for a grey one. 100lvh is the viewport with all
+   chrome retracted — which in standalone is simply the window, the same box
+   the rule above pins to. It keeps the edge strips (sized in the same unit,
+   anchored to opposite edges) continuing the shell's gradient exactly rather
+   than banding across it. */
+.standalone .sky {
+  background-size: 100% 100lvh;
 }
 
 body {

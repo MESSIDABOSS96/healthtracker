@@ -29,6 +29,15 @@
             (pref === 'system' &&
               window.matchMedia('(prefers-color-scheme: dark)').matches);
           document.documentElement.classList.toggle('dark', dark);
+          // Installed-to-Home-Screen detection, pre-paint so the shell is never
+          // laid out at the wrong height first. Both signals on purpose: iOS has
+          // been unreliable about matching the standardised media feature inside
+          // home-screen web apps, and `navigator.standalone` is the iOS-native
+          // one that has always worked there. Either is enough.
+          var standalone =
+            window.matchMedia('(display-mode: standalone)').matches ||
+            window.navigator.standalone === true;
+          document.documentElement.classList.toggle('standalone', standalone);
           var meta = document.querySelector('meta[name="theme-color"]');
           if (meta) meta.setAttribute('content', dark ? '#16212C' : '#EAF1F9');
         } catch (e) {

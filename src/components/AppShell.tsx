@@ -15,8 +15,9 @@ import { focusRing, press } from './ui/styles';
  * and fills it completely. `h-dvh` tracks the iOS toolbar in a browser tab, but
  * installed to the Home Screen there is no toolbar to track and iOS reports a
  * dvh shorter than the window — which left a band of bare canvas under the tab
- * bar. `.app-shell` carries a `display-mode: standalone` override (index.css)
- * switching to `height: 100%`, i.e. the window itself.
+ * bar. `.app-shell` carries a `.standalone` override (index.css) that pins the
+ * shell to the viewport with `position: fixed; inset: 0` instead, sidestepping
+ * height units entirely. The class is set pre-paint in index.html.
  * The header and tab bar are absolutely positioned ON TOP of that scroller
  * rather than being flex siblings beside it — which is the whole point. Glass
  * blurs whatever is painted behind it, so if the bars sat next to the content
