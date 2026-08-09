@@ -64,6 +64,15 @@ export async function signUp(email: string, password: string): Promise<void> {
   const { data, error } = await supabase.auth.signUp({
     email: email.trim(),
     password,
+    options: {
+      // Where the confirmation link lands. Without this it falls back to the
+      // project's Site URL — one dashboard field, easy to point at the wrong
+      // app, and when it is wrong the user confirms successfully and is then
+      // dropped onto a stranger's site with no explanation. Naming the current
+      // origin means the link returns to whichever build sent it, and the
+      // setting can't drift out from under us.
+      emailRedirectTo: window.location.origin,
+    },
   });
   if (error) throw error;
   if (!data.session) {
