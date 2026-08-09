@@ -19,9 +19,16 @@ export const press =
  * Text/number inputs. Inset well (`surface-2`) rather than an outlined box —
  * fields read as recessed into the card instead of stacked on top of it.
  * 44px min height keeps every field a valid touch target.
+ *
+ * `min-w-0` is not decoration. `w-full` sets a width; it does not remove the
+ * intrinsic MINIMUM one, and WebKit gives `input[type=date]` a minimum sized to
+ * its rendered format ("Aug 30, 2026"). Wider than its column, the field simply
+ * overflowed — off the card and off the screen. This is the same rule the
+ * desktop grids carry as `lg:[&>*]:min-w-0`, applied one level lower, on the
+ * control itself, because that is where the stubborn intrinsic width lives.
  */
 export const field = [
-  'h-11 w-full px-3.5 rounded-md',
+  'h-11 w-full min-w-0 px-3.5 rounded-md',
   'bg-surface-2 border border-hairline',
   'text-text placeholder:text-faint',
   'transition-[border-color,box-shadow] duration-150 ease-out-soft',

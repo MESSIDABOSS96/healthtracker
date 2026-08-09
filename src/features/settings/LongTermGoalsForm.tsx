@@ -101,7 +101,7 @@ export function LongTermGoalsForm() {
       description="What you're working toward. Progress against these shows on the Dashboard."
     >
       <form onSubmit={onSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 [&>*]:min-w-0">
           <div className="space-y-1.5">
             <label htmlFor="ltg-weight" className={`block ${labelClass}`}>
               Goal weight ({unit})
@@ -132,7 +132,7 @@ export function LongTermGoalsForm() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 [&>*]:min-w-0">
           <div className="space-y-1.5">
             <label htmlFor="ltg-lifts" className={`block ${labelClass}`}>
               Lifts / week
