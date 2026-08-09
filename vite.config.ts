@@ -44,8 +44,15 @@ export default defineConfig({
         description: 'Daily calorie, training and body-weight tracker.',
         id: '/',                                            // Phase 4 D-15: pin PWA identity (W3C manifest spec)
         categories: ['health', 'fitness', 'productivity'],  // Phase 4 D-15: install-UI / store category hint
-        theme_color: '#09090b',
-        background_color: '#09090b',
+        // Palette values, not the old near-black placeholders these replaced —
+        // #09090b predated the cloud-light redesign and matched nothing in
+        // tokens.css. background_color paints the install splash behind the
+        // icon, so it has to be a colour the app actually uses. The manifest
+        // takes ONE value while the app is theme-aware, so this is the light
+        // ground (the default most installs land on); the theme-aware
+        // meta[name=theme-color] in index.html still handles the live chrome.
+        theme_color: '#EAF1F9',
+        background_color: '#EFF4FA',
         display: 'standalone',
         start_url: '.',
         scope: '.',

@@ -12,6 +12,10 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="VZN" />
+    <!-- Both declared: browsers auto-probe /favicon.ico, but naming it lets the
+         32px and 48px frames inside be picked for tabs and bookmarks instead of
+         downscaling the 192 every time. -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <title>VZN</title>
     <!-- Pre-paint theme application — prevents a flash of the wrong theme.
