@@ -1,0 +1,9 @@
+{
+  "_comment": "Path aliases for the design-sync bundler ONLY. The app still builds from tsconfig.app.json; this exists because the converter strips comments from the tsconfig with a regex that does not understand strings, so the /* inside the \"@/\" alias opens a phantom block comment which then closes on the */ inside tsconfig.app.json's \"src/**/*.test.ts\" exclude glob. The parse throws, the paths plugin returns null, and every @/ import fails to resolve with no warning. This file deliberately contains no */ sequence anywhere, so it survives that stripper.",
+  "compilerOptions": {
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  }
+}

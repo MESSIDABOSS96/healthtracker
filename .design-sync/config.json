@@ -1,0 +1,26 @@
+{
+  "projectId": "04bf3d6f-09ab-4d20-9f6e-1edb08724186",
+  "shape": "package",
+  "pkg": "vzn",
+  "globalName": "VZN",
+  "srcDir": "src",
+  "tsconfig": ".design-sync/tsconfig.paths.json",
+  "buildCmd": "npm run build",
+  "readmeHeader": ".design-sync/conventions.md",
+  "cssEntry": ".design-sync/.cache/vzn-compiled.css",
+  "tokensGlob": "src/styles/tokens.css",
+  "extraFonts": [
+    "node_modules/@fontsource-variable/instrument-sans/wght.css"
+  ],
+  "componentSrcMap": {
+    "Button": "src/components/ui/button.tsx",
+    "Card": "src/components/ui/card.tsx",
+    "CardHeader": "src/components/ui/card.tsx",
+    "CardTitle": "src/components/ui/card.tsx",
+    "CardMeta": "src/components/ui/card.tsx",
+    "CardContent": "src/components/ui/card.tsx",
+    "Meter": "src/components/ui/meter.tsx",
+    "Segmented": "src/components/ui/segmented.tsx",
+    "buttonVariants": null
+  }
+}

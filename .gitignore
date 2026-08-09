@@ -44,3 +44,12 @@ coverage
 *.sln
 *.sw?
 .claude/worktrees/
+
+# design-sync: staged converter scripts, generated bundle, and machine state.
+# The durable inputs (.design-sync/config.json, NOTES.md, conventions.md,
+# previews/, overrides/) ARE committed — everything below is regenerated.
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
