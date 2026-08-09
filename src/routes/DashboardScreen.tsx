@@ -17,14 +17,14 @@ import { WeightChart } from '@/features/dashboard/WeightChart';
 import { CaloriesChart, type CaloriesDatum } from '@/features/dashboard/CaloriesChart';
 import { TrainingChart, type TrainingWeekDatum } from '@/features/dashboard/TrainingChart';
 import { ClosureGrid } from '@/features/dashboard/ClosureGrid';
-import { cn } from '@/lib/utils';
+import { Segmented } from '@/components/ui/segmented';
 
 type Range = '4w' | '3m' | 'all';
 const RANGE_DAYS: Record<Range, number> = { '4w': 28, '3m': 91, all: 365 * 5 };
-const RANGES: Array<{ key: Range; label: string }> = [
-  { key: '4w', label: '4 weeks' },
-  { key: '3m', label: '3 months' },
-  { key: 'all', label: 'All' },
+const RANGES: ReadonlyArray<{ value: Range; label: string }> = [
+  { value: '4w', label: '4 weeks' },
+  { value: '3m', label: '3 months' },
+  { value: 'all', label: 'All' },
 ];
 
 /** Monday of the week containing dayKey. */
@@ -44,7 +44,9 @@ export function DashboardScreen() {
   const checkins = useLiveQuery(() => getCheckinsInRange(startKey, todayKey), [startKey, todayKey]);
   const longTermGoals = useLiveQuery(() => getLongTermGoals(), []);
 
-  const gridStartKey = addDays(todayKey, -(12 * 7));
+  // 26 weeks: the closure grid shows 12 on phones and 26 on desktop, where
+  // it spans the full row. Fetching the wider range once covers both.
+  const gridStartKey = addDays(todayKey, -(26 * 7));
   const closures = useClosureRange(gridStartKey, todayKey);
   const streak = useClosureStreak(todayKey);
 
@@ -101,44 +103,54 @@ export function DashboardScreen() {
       : startKey;
 
   return (
-    <div className="px-4 py-6 space-y-4">
-      <div
-        role="radiogroup"
-        aria-label="Time range"
-        className="flex rounded-lg bg-surface border border-border p-1"
-      >
-        {RANGES.map(r => (
-          <button
-            key={r.key}
-            type="button"
-            role="radio"
-            aria-checked={range === r.key}
-            onClick={() => setRange(r.key)}
-            className={cn(
-              'flex-1 h-9 rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-              range === r.key ? 'bg-border/60 text-text font-medium' : 'text-muted',
-            )}
-          >
-            {r.label}
-          </button>
-        ))}
+    <div className="px-4 pb-10 pt-3 lg:px-6 lg:pt-4">
+      <h1 className="sr-only">Dashboard</h1>
+
+      {/* The range selector governs every card below it, so it stays full
+          width and above the grid rather than becoming a first cell. */}
+      <Segmented
+        value={range}
+        onChange={setRange}
+        options={RANGES}
+        ariaLabel="Time range"
+        className="lg:mx-auto lg:max-w-sm"
+      />
+
+      {/* Charts are wider than they are tall, so two per row on desktop reads
+          better than one 1100px-wide sparkline.
+
+          `[&>*]:min-w-0` is load-bearing, not tidiness. Grid ITEMS default to
+          `min-width: auto`, i.e. they refuse to shrink below their content's
+          intrinsic width — and Recharts' ResponsiveContainer reports a large
+          one. Without this the cards overflow their tracks, the page grows a
+          horizontal scrollbar, and `mx-auto` then centres against that wider
+          scroll width, which is what made the whole layout look shifted left.
+          (The tracks themselves were never the problem: Tailwind's grid-cols-2
+          already emits `repeat(2, minmax(0,1fr))`.)
+
+          Rows stretch rather than `items-start`, so a short card sits flush
+          with its taller neighbour instead of leaving a hole beside it. */}
+      <div className="mt-4 space-y-4 lg:grid lg:grid-cols-2 lg:items-stretch lg:gap-7 lg:space-y-0 lg:[&>*]:min-w-0">
+        <GoalProgressCard
+          goals={longTermGoals}
+          progress={goalProgress}
+          unit={goals?.weightUnit ?? 'lb'}
+          thisWeek={thisWeek}
+        />
+
+        <WeightChart
+          allWeights={allWeights ?? []}
+          startKey={weightStartKey}
+          unit={goals?.weightUnit ?? 'lb'}
+        />
+        <CaloriesChart data={caloriesData} target={goals?.calories ?? 0} />
+        <TrainingChart data={trainingData} />
+        {/* Fifth of five, so it is always alone on the last row — spanning
+            both columns keeps the grid from ending on a lopsided half-row. */}
+        <div className="lg:col-span-2">
+          <ClosureGrid todayKey={todayKey} closures={closures ?? new Map()} streak={streak} />
+        </div>
       </div>
-
-      <GoalProgressCard
-        goals={longTermGoals}
-        progress={goalProgress}
-        unit={goals?.weightUnit ?? 'lb'}
-        thisWeek={thisWeek}
-      />
-
-      <WeightChart
-        allWeights={allWeights ?? []}
-        startKey={weightStartKey}
-        unit={goals?.weightUnit ?? 'lb'}
-      />
-      <CaloriesChart data={caloriesData} target={goals?.calories ?? 0} />
-      <TrainingChart data={trainingData} />
-      <ClosureGrid todayKey={todayKey} closures={closures ?? new Map()} streak={streak} />
     </div>
   );
 }

@@ -1,21 +1,67 @@
 @import './tokens.css';
-@import 'tailwindcss';
+/* Instrument Sans, weight axis only, self-hosted woff2 (precached by the SW's
+   woff2 glob — the app still renders correctly offline and on first paint via
+   font-display: swap). */
+@import '@fontsource-variable/instrument-sans/wght.css';
+/* `source(none)` turns off Tailwind's automatic content detection and the two
+   @source lines put it back, scoped. Auto-detection walks the whole project,
+   which here means the markdown under .planning/ and .agents/ — those docs
+   quote old class names, so every stale utility they mention was being
+   generated into the shipped stylesheet. */
+@import 'tailwindcss' source(none);
+@source '../../index.html';
+@source '../../src';
 
 /* Tailwind v4 theme directive — maps tokens to utility classes.
-   Result: bg-bg, bg-surface, text-muted, border-border, text-accent, etc. */
+   Result: bg-bg, bg-surface, bg-surface-2, text-muted, border-border,
+   text-accent, rounded-md/lg/xl, shadow-card, ease-out-soft, font-display. */
 @theme {
-  --color-bg:      var(--bg);
-  --color-surface: var(--surface);
-  --color-border:  var(--border);
-  --color-muted:   var(--muted);
-  --color-text:    var(--text);
-  --color-accent:  var(--accent);
-  --color-track:   var(--track);
-  --color-danger:  var(--danger);
-  --color-warn:    var(--warn);
+  --color-bg:        var(--bg);
+  --color-surface:   var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border:    var(--border);
+  --color-hairline:  var(--hairline);
+  --color-muted:     var(--muted);
+  --color-faint:     var(--faint);
+  --color-text:      var(--text);
+  --color-accent:    var(--accent);
+  --color-accent-wash:  var(--accent-wash);
+  --color-closed:       var(--closed);
+  --color-closed-wash:  var(--closed-wash);
+  --color-accent-solid: var(--accent-solid);
+  --color-on-accent:    var(--on-accent);
+  --color-track:     var(--track);
+  --color-danger:    var(--danger);
+  --color-warn:      var(--warn);
   --color-ring-food:   var(--ring-food);
   --color-ring-lift:   var(--ring-lift);
   --color-ring-cardio: var(--ring-cardio);
+
+  --radius-xs: var(--r-xs);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+
+  --shadow-card:   var(--shadow-md);
+  --shadow-raised: var(--shadow-lg);
+  --shadow-contact: var(--shadow-sm);
+
+  --ease-out-soft: var(--ease-out);
+  --ease-smooth:   var(--ease-in-out);
+  --ease-pop:      var(--ease-spring);
+
+  /* Type roles.
+     --font-sans is the OS UI face: on iOS that's SF Pro, the right body face
+     for something living on a home screen.
+     --font-display is Instrument Sans — a tighter grotesque with distinctive
+     figures, used ONLY for numerals and titles. Every number in this app is
+     the content, so the numerals get the characterful face and the prose stays
+     native. Self-hosted woff2, precached — no network at runtime.
+     Declared here rather than in tokens.css: Tailwind re-emits `--font-*` on
+     :root, and defining the same name in both files makes a var() cycle. */
+  --font-sans:    system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Instrument Sans Variable', system-ui, sans-serif;
 }
 
 /* Native form controls / scrollbars follow the active theme */
@@ -23,15 +69,109 @@
 .dark { color-scheme: dark; }
 
 html {
-  background-color: var(--bg);
+  /* The sky's top color, so the pre-React paint matches where the gradient
+     starts rather than flashing a mid-tone. */
+  background-color: var(--sky-top);
   color: var(--text);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* The app is a fixed shell with exactly one scroller (<main>), so the document
+   itself must never scroll. This is not tidiness: a document-level scrollbar
+   takes layout width off the right side only, which shifts every `mx-auto`
+   box — including the absolutely-positioned header — left by half its width.
+   That reads as "the layout isn't centred" and is invisible in the CSS. */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font-sans);
+  margin: 0;
+  /* Slightly tightened default tracking — system-ui at small sizes on a phone
+     reads better a hair closer than its default. */
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* No rubber-band highlight or long-press callout on tap targets. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Numbers are this app's content, so they get the display face, tabular
+   figures, and the tighter tracking a large grotesque needs to look set
+   rather than spaced. Applied via the `.stat` class on any numeric readout. */
+.stat {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  letter-spacing: -0.02em;
+}
+
+/* Liquid glass. Reserved for the floating navigation layer — the header and
+   the tab bar — because glass only works when there is live content moving
+   behind it. Applying it to content cards would stack pane on pane and turn
+   the whole screen milky, which is exactly what Apple's own guidance warns
+   against: glass is the layer *above* the content, not the content.
+
+   `saturate()` matters as much as `blur()`. Real glass concentrates the color
+   of what's behind it; blur alone reads as frosted plastic. */
+/* The sky wash. Painted on the shell (which is exactly one viewport tall and
+   never scrolls) so the gradient stays put while content moves in front of it.
+   `--sky` resolves to a viewport-sized image; the two edge strips reuse it at
+   that same size and anchor to the matching edge, so they extend the gradient
+   seamlessly instead of showing a flat band where they cover the gap above the
+   header capsule and below the tab bar. */
+.sky {
+  background-image: var(--sky);
+  background-repeat: no-repeat;
+  background-size: 100% 100dvh;
+  background-position: left top;
+}
+.sky-edge-bottom {
+  background-position: left bottom;
+}
+
+.glass {
+  background-color: var(--glass-bg);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+}
+
+/* No backdrop-filter (older Firefox, or a browser with it disabled): fall back
+   to a nearly-opaque pane so the bars stay legible instead of showing text
+   through them. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass {
+    background-color: var(--surface);
+  }
+}
+
+/* Native number inputs render spinners that fight the layout on desktop and
+   do nothing useful on a phone. */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
   margin: 0;
 }
+input[type='number'] { -moz-appearance: textfield; }
 
 /* Safe-area support for iPhone notch + home indicator (D-04) */
 .safe-area-top    { padding-top:    env(safe-area-inset-top); }
 .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+/* Reduced motion: keep opacity/color transitions (they aid comprehension),
+   drop everything that moves. Not zero animation — gentler animation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

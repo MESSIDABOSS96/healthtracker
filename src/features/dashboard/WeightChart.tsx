@@ -6,10 +6,11 @@ import {
   ResponsiveContainer, ComposedChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip,
 } from 'recharts';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardMeta, CardTitle } from '@/components/ui/card';
 import type { WeightEntry } from '@/db/schema';
 import { computeEma } from '@/services/weight.svc';
 import { CHART, AXIS_TICK, TOOLTIP_STYLES, shortDay } from './chartTheme';
+import { ChartEmpty, ChartLegend } from './ChartLegend';
 
 interface WeightChartProps {
   /** Full history (EMA needs it) — the chart windows to entries >= startKey. */
@@ -29,25 +30,23 @@ export function WeightChart({ allWeights, startKey, unit }: WeightChartProps) {
     latest && first ? Math.round((latest.ema - first.ema) * 10) / 10 : undefined;
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-baseline justify-between space-y-0">
+    <Card className="flex flex-col">
+      <CardHeader className="flex-row items-baseline justify-between">
         <CardTitle>Weight</CardTitle>
         {latest && (
-          <span className="text-xs text-muted tabular-nums">
+          <CardMeta>
             {latest.ema} {unit}
             {change !== undefined && change !== 0 && (
               <> · {change > 0 ? '+' : ''}{change} this period</>
             )}
-          </span>
+          </CardMeta>
         )}
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-1 flex-col">
         {data.length < 2 ? (
-          <p className="text-sm text-muted py-6 text-center">
-            Log your weight a few days in a row to see the trend.
-          </p>
+          <ChartEmpty>Log your weight a few days in a row to see the trend.</ChartEmpty>
         ) : (
-          <div className="h-44">
+          <div className="h-44 lg:h-56 lg:h-auto lg:min-h-[13rem] lg:flex-1">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={data} margin={{ top: 6, right: 4, bottom: 0, left: -18 }}>
                 <CartesianGrid stroke={CHART.grid} strokeOpacity={0.5} vertical={false} />
@@ -78,9 +77,9 @@ export function WeightChart({ allWeights, startKey, unit }: WeightChartProps) {
                 />
                 <Line
                   dataKey="weight"
-                  stroke={CHART.muted}
+                  stroke={CHART.faint}
                   strokeWidth={0}
-                  dot={{ r: 2.5, fill: CHART.muted, strokeWidth: 0 }}
+                  dot={{ r: 2.5, fill: CHART.faint, strokeWidth: 0 }}
                   activeDot={{ r: 4 }}
                   isAnimationActive={false}
                   name="weight"
@@ -98,16 +97,14 @@ export function WeightChart({ allWeights, startKey, unit }: WeightChartProps) {
             </ResponsiveContainer>
           </div>
         )}
-        <div className="mt-1 flex items-center gap-4 text-xs text-muted" aria-hidden>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0.5 w-4 rounded" style={{ backgroundColor: 'var(--chart-food)' }} />
-            trend
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: 'var(--muted)' }} />
-            weigh-ins
-          </span>
-        </div>
+        {data.length >= 2 && (
+          <ChartLegend
+            items={[
+              { label: 'Trend', color: 'var(--chart-food)', shape: 'line' },
+              { label: 'Weigh-ins', color: 'var(--faint)', shape: 'dot' },
+            ]}
+          />
+        )}
       </CardContent>
     </Card>
   );

@@ -1,16 +1,18 @@
 {
-  "name": "healthtracker",
+  "name": "vzn",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:demo": "VITE_DEMO_SEED=1 vite --port 5174 --strictPort",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint . --ext .ts,.tsx"
   },
   "dependencies": {
+    "@fontsource-variable/instrument-sans": "^5.3.0",
     "@hookform/resolvers": "^5.2.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",

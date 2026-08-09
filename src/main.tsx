@@ -37,7 +37,15 @@ async function initApp(): Promise<void> {
   // Best-effort; non-fatal — install/eviction banners are the user-facing fallback.
   if (navigator.storage?.persist) {
     try {
-      const granted = await navigator.storage.persist();
+      // Raced against a timeout: render must not depend on this resolving.
+      // persist() can hang indefinitely in some environments (headless Chrome
+      // is one, but so is a browser mid-permission-prompt), and because this
+      // await sits before createRoot, a hang meant a permanently blank page.
+      // A missed persist costs a storage guarantee; a hang cost the whole app.
+      const granted = await Promise.race([
+        navigator.storage.persist(),
+        new Promise<boolean>(resolve => setTimeout(() => resolve(false), 3000)),
+      ]);
       (window as unknown as { __ht_persisted?: boolean }).__ht_persisted = granted;
     } catch {
       // Swallow — banner path still warns the user.
@@ -54,6 +62,30 @@ async function initApp(): Promise<void> {
   // out of production bundles (verified via grep -rl 'runDayKeySmoke' dist/ returning empty).
   if (import.meta.env.DEV) {
     void import('./lib/dayKey.smoke').then(({ runDayKeySmoke }) => runDayKeySmoke());
+  }
+
+  // Step 6.2 — demo fixture (`npm run dev:demo`, port 5174 → its own origin,
+  // therefore its own IndexedDB, so this cannot reach the real database on
+  // 5173). Seeds only when the meal table is empty, so edits made while poking
+  // at the demo survive a reload; window.__demoReseed() forces a rebuild.
+  // Dynamic import keeps the fixture out of production bundles.
+  if (import.meta.env.DEV && import.meta.env.VITE_DEMO_SEED === '1') {
+    try {
+      const { db } = await import('./db/db');
+      const { seedDemo, resetDemo } = await import('./dev/seedDemo');
+      const { todayKey } = await import('./lib/dayKey');
+
+      (window as unknown as { __demoReseed?: () => Promise<void> }).__demoReseed = () =>
+        resetDemo(todayKey()).then(() => location.reload());
+
+      if ((await db.mealEntries.count()) === 0) {
+        await seedDemo(todayKey());
+        console.info('[demo] seeded 17 weeks of fixture data');
+      }
+      console.info('[demo] run __demoReseed() in the console to regenerate');
+    } catch (err) {
+      console.error('[demo] seed failed', err);
+    }
   }
 
   // Step 6.5 — D-13: ensure goals singleton exists before render.

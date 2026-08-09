@@ -1,10 +1,18 @@
 // src/services/parse.svc.ts
-// Freeform food-description parsing. Two providers behind one interface:
-//   1. AI — Claude Haiku, called browser-direct (officially supported CORS path
-//      via the `anthropic-dangerous-direct-browser-access` header) with the
-//      user's on-device key. Structured JSON output, Zod-validated.
-//   2. Local — deterministic grammar for offline / no-key use:
+// Freeform food-description parsing. Three providers behind one interface:
+//   1. Anthropic — Claude, called browser-direct (officially supported CORS
+//      path via the `anthropic-dangerous-direct-browser-access` header) with
+//      the user's on-device key. Structured JSON output, Zod-validated.
+//   2. OpenRouter — the same job through an OpenAI-compatible endpoint, so any
+//      model in its catalog (including cheap open-weight ones) can be used.
+//   3. Local — deterministic grammar for offline / no-key use:
 //      "<name> <qty><unit> <P>p <C>c <F>f [<cal>cal] [/100g]"
+//
+// Anthropic and OpenRouter differ in every layer of the request — URL, auth
+// header, where the system prompt goes, how structured output is requested,
+// and where the reply text sits in the response — so they get separate
+// functions rather than a config object with holes in it. What they share is
+// the contract: return a ParsedFood, or throw a ParseError.
 //
 // Results NEVER auto-save: the UI routes every parse through an editable
 // confirm form (LLM unit/portion hallucination is a documented failure mode).
@@ -13,7 +21,7 @@
 // write begins — never call parse functions inside a db.transaction.
 
 import { z } from 'zod';
-import { getApiKey } from '@/lib/apiKey';
+import { getApiKey, getModel, getProvider } from '@/lib/apiKey';
 
 export interface ParsedFood {
   name: string;
@@ -105,11 +113,15 @@ Rules:
 - One food item per request. If several foods are described, parse the dominant one and note it in assumptions.
 - Numbers only in numeric fields. Round to 1 decimal.`;
 
-async function parseWithAI(text: string, apiKey: string): Promise<ParsedFood> {
+async function parseWithAI(text: string, apiKey: string, model: string): Promise<ParsedFood> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
   let resp: Response;
   try {
     resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'content-type': 'application/json',
         'x-api-key': apiKey,
@@ -117,7 +129,7 @@ async function parseWithAI(text: string, apiKey: string): Promise<ParsedFood> {
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5',
+        model,
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: text }],
@@ -127,7 +139,12 @@ async function parseWithAI(text: string, apiKey: string): Promise<ParsedFood> {
       }),
     });
   } catch {
+    if (controller.signal.aborted) {
+      throw new ParseError('That request took too long — try again.', 'api');
+    }
     throw new ParseError('Network error — using offline entry instead.', 'offline');
+  } finally {
+    clearTimeout(timer);
   }
 
   if (resp.status === 401 || resp.status === 403) {
@@ -155,6 +172,182 @@ async function parseWithAI(text: string, apiKey: string): Promise<ParsedFood> {
   const parsed = aiResultSchema.safeParse(raw);
   if (!parsed.success) {
     throw new ParseError("Couldn't parse that — try rephrasing.", 'api');
+  }
+
+  const r = parsed.data;
+  return {
+    name: r.name,
+    quantity: r.quantity,
+    unit: r.unit,
+    calories: r.calories,
+    proteinG: r.proteinG,
+    carbsG: r.carbsG,
+    fatG: r.fatG,
+    assumptions: r.assumptions || undefined,
+    source: 'ai',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// OpenRouter provider — OpenAI-compatible chat completions.
+// ---------------------------------------------------------------------------
+
+/**
+ * Pull a JSON object out of a model reply.
+ *
+ * Strong models honour `response_format` and return bare JSON. Cheap
+ * open-weight ones frequently wrap it in ```json fences or add a sentence of
+ * commentary, which is a formatting failure, not a wrong answer — so the
+ * object is salvaged rather than thrown away. Whatever comes out still has to
+ * clear Zod and the 4/4/9 sanity check before the user ever sees it.
+ */
+function extractJsonObject(raw: string): unknown {
+  const text = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Fall through to brace-scanning.
+  }
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end <= start) {
+    throw new ParseError("Couldn't parse that — try rephrasing.", 'api');
+  }
+  try {
+    return JSON.parse(text.slice(start, end + 1));
+  } catch {
+    throw new ParseError("Couldn't parse that — try rephrasing.", 'api');
+  }
+}
+
+// Weaker models need the output contract restated in the prompt; strong ones
+// ignore the repetition harmlessly.
+const OPENROUTER_SYSTEM_PROMPT = `${SYSTEM_PROMPT}
+
+Reply with ONLY a JSON object matching this shape, and nothing else — no prose, no code fences:
+{"name":string,"quantity":number,"unit":string,"calories":number,"proteinG":number,"carbsG":number,"fatG":number,"assumptions":string}`;
+
+/** No parse should ever outlive a user's patience, and none of these calls has
+ *  a natural end — a hung request left the composer spinning with no way out. */
+const REQUEST_TIMEOUT_MS = 20_000;
+
+async function callOpenRouter(
+  apiKey: string,
+  model: string,
+  text: string,
+  structured: boolean,
+  signal: AbortSignal,
+): Promise<Response> {
+  return fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    signal,
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${apiKey}`,
+      // OpenRouter named these itself precisely so browser clients can set
+      // them — `Referer` proper is a forbidden header name in fetch.
+      'HTTP-Referer': window.location.origin,
+      'X-Title': 'VZN',
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0,
+      // Generous: a truncated reply is indistinguishable from a bad one, and
+      // the cost of unused headroom is zero.
+      max_tokens: 900,
+      messages: [
+        { role: 'system', content: OPENROUTER_SYSTEM_PROMPT },
+        { role: 'user', content: text },
+      ],
+      // Reasoning off. A chain of thought is the wrong trade for one line of
+      // nutrition lookup: it multiplies latency and can eat the entire token
+      // budget before the model gets around to answering. Ignored by models
+      // that don't reason, so it is safe to always send.
+      reasoning: { enabled: false },
+      ...(structured
+        ? {
+            response_format: {
+              type: 'json_schema',
+              json_schema: { name: 'nutrition', strict: true, schema: OUTPUT_JSON_SCHEMA },
+            },
+          }
+        : {}),
+      // NB: no `provider: { require_parameters: true }`. It sounds safer, but
+      // it turns "this provider ignores response_format" into a hard routing
+      // failure. Letting the param be ignored is strictly better here, because
+      // extractJsonObject + Zod already catch a free-text reply.
+    }),
+  });
+}
+
+async function parseWithOpenRouter(
+  text: string,
+  apiKey: string,
+  model: string,
+): Promise<ParsedFood> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let resp: Response;
+  try {
+    resp = await callOpenRouter(apiKey, model, text, true, controller.signal);
+
+    // Some models don't implement json_schema at all. That's a capability
+    // mismatch, not a user error — retry in plain mode, where the prompt still
+    // specifies the shape and extractJsonObject + Zod do the enforcing.
+    if (!resp.ok && resp.status >= 400 && resp.status < 500 && resp.status !== 401 && resp.status !== 403) {
+      resp = await callOpenRouter(apiKey, model, text, false, controller.signal);
+    }
+  } catch {
+    // A timeout is NOT an offline condition: falling back to the local grammar
+    // would answer "banana" with the offline-format instructions, which reads
+    // as though the input were malformed rather than the model being slow.
+    if (controller.signal.aborted) {
+      throw new ParseError('That model took too long — try a faster one in Settings.', 'api');
+    }
+    throw new ParseError('Network error — using offline entry instead.', 'offline');
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (resp.status === 401 || resp.status === 403) {
+    throw new ParseError('API key was rejected — check it in Settings.', 'auth');
+  }
+  if (resp.status === 402) {
+    throw new ParseError('OpenRouter says this key is out of credit.', 'auth');
+  }
+  if (resp.status === 404) {
+    throw new ParseError(`No such model: "${model}". Check the model ID in Settings.`, 'api');
+  }
+  if (!resp.ok) {
+    throw new ParseError(`Parse service error (${resp.status}). Try again.`, 'api');
+  }
+
+  const data = (await resp.json()) as {
+    choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
+    error?: { message?: string };
+  };
+  if (data.error?.message) {
+    throw new ParseError(`Model error: ${data.error.message}`, 'api');
+  }
+  if (data.choices?.[0]?.finish_reason === 'length') {
+    throw new ParseError(
+      'That model ran out of room before answering — try a faster one in Settings.',
+      'api',
+    );
+  }
+
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new ParseError("Couldn't parse that — try rephrasing.", 'api');
+  }
+
+  const parsed = aiResultSchema.safeParse(extractJsonObject(content));
+  if (!parsed.success) {
+    throw new ParseError(
+      "That model didn't return usable numbers. Try a stronger model in Settings.",
+      'api',
+    );
   }
 
   const r = parsed.data;
@@ -256,7 +449,9 @@ export async function parseFood(text: string): Promise<ParsedFood> {
   const apiKey = getApiKey();
   if (apiKey && navigator.onLine) {
     try {
-      return await parseWithAI(text, apiKey);
+      return getProvider() === 'openrouter'
+        ? await parseWithOpenRouter(text, apiKey, getModel())
+        : await parseWithAI(text, apiKey, getModel());
     } catch (err) {
       // Offline/network failures fall through to the local grammar; auth and
       // hard API errors surface to the user (silent fallback would mask a bad key).

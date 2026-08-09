@@ -31,8 +31,12 @@ export function LibraryChips({ dayKey }: { dayKey: string }) {
   const recentIds = new Set((recent ?? []).map(f => f.id));
   const frequentFiltered = frequent?.filter(f => !recentIds.has(f.id));
 
+  // -mx-4 cancels the screen's horizontal padding so the scroll rows reach both
+  // edges of the phone; each row re-applies px-4 to its own label and first
+  // chip. On desktop the rows live inside a grid column, where bleeding would
+  // spill into the gutter — so the bleed is cancelled at `lg`.
   return (
-    <div className="space-y-3 -mx-4">
+    <div className="-mx-4 space-y-4 lg:mx-0">
       <QuickLogChipRow
         label="Recent"
         foods={recent}

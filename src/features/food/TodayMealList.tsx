@@ -1,10 +1,17 @@
 // src/features/food/TodayMealList.tsx
-// Section-grouped meal list for a day: 4 fixed sections (Breakfast / Lunch /
-// Dinner / Snack) in order; empty sections show em-dash; truly-empty day shows
-// a single friendly line. Parameterized by dayKey so DayDetail reuses it.
+// Section-grouped meal list for a day, in fixed order (Breakfast / Lunch /
+// Dinner / Snack). Parameterized by dayKey so DayDetail reuses it.
+//
+// Only sections with entries render. The old layout printed all four headings
+// plus an em-dash for each empty one, so a day with a single logged breakfast
+// cost four headings and three dashes — noise standing in for information.
+//
+// Each section carries its own calorie subtotal, read straight off the
+// denormalized MealEntry.computedCalories (no join, no extra query).
 
 import { useMemo } from 'react';
 import type { Food, MealBucket, MealEntry } from '@/db/schema';
+import { eyebrow } from '@/components/ui/styles';
 import { useEntriesForDay, useAllFoods } from './hooks';
 import { MealEntryRow } from './MealEntryRow';
 
@@ -37,27 +44,34 @@ export function TodayMealList({ dayKey }: { dayKey: string }) {
   entries.forEach(e => byBucket[e.bucket].push(e));
 
   if (entries.length === 0) {
-    return <p className="text-sm text-muted py-2">Nothing logged yet.</p>;
+    return (
+      <p className="py-6 text-center text-[13px] text-muted">
+        Nothing logged yet. Type what you ate above.
+      </p>
+    );
   }
 
+  const filled = BUCKET_ORDER.filter(b => byBucket[b].length > 0);
+
   return (
-    <div>
-      {BUCKET_ORDER.map(b => (
-        <section key={b}>
-          <h3 className="text-xs text-muted uppercase tracking-wide pt-3 pb-1 border-t border-border first:border-t-0 first:pt-0">
-            {BUCKET_LABELS[b]}
-          </h3>
-          {byBucket[b].length === 0 ? (
-            <p className="text-sm text-muted py-2">—</p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {byBucket[b].map(e => (
+    <div className="space-y-5">
+      {filled.map(b => {
+        const rows = byBucket[b];
+        const subtotal = Math.round(rows.reduce((sum, e) => sum + e.computedCalories, 0));
+        return (
+          <section key={b}>
+            <div className="flex items-baseline justify-between gap-3 pb-1.5">
+              <h3 className={eyebrow}>{BUCKET_LABELS[b]}</h3>
+              <span className="stat text-[11px] text-faint">{subtotal.toLocaleString()} cal</span>
+            </div>
+            <ul className="divide-y divide-hairline">
+              {rows.map(e => (
                 <MealEntryRow key={e.id} entry={e} food={foodById.get(e.foodId)} />
               ))}
             </ul>
-          )}
-        </section>
-      ))}
+          </section>
+        );
+      })}
     </div>
   );
 }

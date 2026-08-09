@@ -1,13 +1,41 @@
 // src/features/settings/ApiKeyCard.tsx
-// Anthropic API key management. Key lives in localStorage (lib/apiKey.ts) so
-// it is structurally excluded from JSON exports. Without a key the app still
-// works — food entry falls back to the offline structured format.
+// AI provider config. The key lives in localStorage (lib/apiKey.ts) so it is
+// structurally excluded from JSON exports. Without a key the app still works —
+// food entry falls back to the offline structured format.
 
 import { useState } from 'react';
 import { KeyRound } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { getApiKey, setApiKey, clearApiKey } from '@/lib/apiKey';
+import { Segmented } from '@/components/ui/segmented';
+import { field, focusRing, label as labelClass, press } from '@/components/ui/styles';
+import {
+  clearApiKey,
+  DEFAULT_MODEL,
+  getApiKey,
+  getModel,
+  getProvider,
+  OPENROUTER_SUGGESTIONS,
+  PROVIDER_LABEL,
+  setAiConfig,
+  type AiProvider,
+} from '@/lib/apiKey';
+import { SettingsCard } from './SettingsCard';
+
+const PROVIDER_OPTIONS = [
+  { value: 'anthropic', label: PROVIDER_LABEL.anthropic },
+  { value: 'openrouter', label: PROVIDER_LABEL.openrouter },
+] as const satisfies ReadonlyArray<{ value: AiProvider; label: string }>;
+
+const KEY_PLACEHOLDER: Record<AiProvider, string> = {
+  anthropic: 'sk-ant-…',
+  openrouter: 'sk-or-…',
+};
+
+const PROVIDER_HELP: Record<AiProvider, string> = {
+  anthropic: 'Get a key at console.anthropic.com → API keys.',
+  openrouter:
+    'Get a key at openrouter.ai/keys, then use any model ID from openrouter.ai/models. Cheap open-weight models handle this fine — every result goes through the confirm form before it saves.',
+};
 
 function mask(key: string): string {
   return key.length <= 12 ? '••••••••' : `${key.slice(0, 10)}…${key.slice(-4)}`;
@@ -15,14 +43,30 @@ function mask(key: string): string {
 
 export function ApiKeyCard() {
   const [stored, setStored] = useState<string | null>(() => getApiKey());
+  const [storedProvider, setStoredProvider] = useState<AiProvider>(() => getProvider());
+  const [storedModel, setStoredModel] = useState<string>(() => getModel());
+
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState('');
+  const [provider, setProvider] = useState<AiProvider>(() => getProvider());
+  const [draftKey, setDraftKey] = useState('');
+  const [draftModel, setDraftModel] = useState('');
+
+  // Changing only the model shouldn't cost you the key. The stored one is kept
+  // unless a new one is typed — except when the provider changed, where the old
+  // key is not merely stale but wrong: an Anthropic key is not an OpenRouter
+  // key, and silently carrying it over would fail as a confusing 401 later.
+  const providerChanged = provider !== storedProvider;
+  const canKeepKey = !!stored && editing && !providerChanged;
+  const effectiveKey = draftKey.trim() || (canKeepKey ? (stored as string) : '');
 
   const save = () => {
-    if (!draft.trim()) return;
-    setApiKey(draft);
+    if (!effectiveKey) return;
+    setAiConfig({ provider, key: effectiveKey, model: draftModel || DEFAULT_MODEL[provider] });
     setStored(getApiKey());
-    setDraft('');
+    setStoredProvider(getProvider());
+    setStoredModel(getModel());
+    setDraftKey('');
+    setDraftModel('');
     setEditing(false);
   };
 
@@ -32,51 +76,137 @@ export function ApiKeyCard() {
     setEditing(false);
   };
 
-  return (
-    <Card className="bg-surface border border-border rounded-lg p-4 space-y-3">
-      <h2 className="text-base font-semibold text-text flex items-center gap-2">
-        <KeyRound size={16} className="text-muted" aria-hidden />
-        AI food parsing
-      </h2>
+  const startEditing = () => {
+    setProvider(storedProvider);
+    setDraftModel(storedModel);
+    setEditing(true);
+  };
 
-      {stored && !editing ? (
-        <>
-          <p className="text-sm text-muted">
-            Key saved: <span className="tabular-nums">{mask(stored)}</span>
-          </p>
+  /** Switching provider always swaps in that provider's default model. The
+   *  previous attempt kept a custom model ID across the switch, which could
+   *  leave an Anthropic model selected under OpenRouter — a 404 waiting to
+   *  happen. Model IDs don't transfer between providers, so neither should this. */
+  const chooseProvider = (next: AiProvider) => {
+    setProvider(next);
+    setDraftModel(DEFAULT_MODEL[next]);
+  };
+
+  const saved = stored && !editing;
+
+  return (
+    <SettingsCard
+      title="AI food parsing"
+      icon={KeyRound}
+      description={
+        saved
+          ? 'Freeform entry is on. Type what you ate and the macros are worked out for you.'
+          : 'Add a key to type food in plain language and have calories + macros computed for you. Stored only on this device, never included in backups. Without a key, the structured offline format still works.'
+      }
+    >
+      {saved ? (
+        <div className="space-y-3">
+          <dl className="space-y-1.5 rounded-sm bg-surface-2 px-3 py-2.5 text-[13px]">
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted">Provider</dt>
+              <dd className="font-medium text-text">{PROVIDER_LABEL[storedProvider]}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="shrink-0 text-muted">Model</dt>
+              <dd className="stat truncate text-text">{storedModel}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted">Key</dt>
+              <dd className="stat text-text">{mask(stored)}</dd>
+            </div>
+          </dl>
           <div className="flex gap-2">
-            <Button type="button" variant="ghost" onClick={() => setEditing(true)}>
-              Replace
+            <Button type="button" variant="outline" size="sm" onClick={startEditing}>
+              Change
             </Button>
-            <Button type="button" variant="ghost" onClick={remove} style={{ color: 'var(--danger)' }}>
+            <Button type="button" variant="danger" size="sm" onClick={remove}>
               Remove
             </Button>
           </div>
-        </>
+        </div>
       ) : (
-        <>
-          <p className="text-sm text-muted">
-            Paste an Anthropic API key to type food in plain language and have calories + macros
-            computed for you (~a tenth of a cent per new item). Stored only on this device, never
-            included in backups. Without a key, the structured offline format still works.
-          </p>
-          <form
-            onSubmit={e => {
-              e.preventDefault();
-              save();
-            }}
-            className="flex gap-2"
-          >
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            save();
+          }}
+          className="space-y-3"
+        >
+          <Segmented
+            value={provider}
+            onChange={chooseProvider}
+            options={PROVIDER_OPTIONS}
+            ariaLabel="AI provider"
+          />
+
+          <div className="space-y-1.5">
+            <label htmlFor="ai-key" className={`block ${labelClass}`}>
+              API key{canKeepKey && <span className="font-normal text-faint"> · optional</span>}
+            </label>
             <input
+              id="ai-key"
               type="password"
-              value={draft}
-              onChange={e => setDraft(e.target.value)}
-              placeholder="sk-ant-…"
+              value={draftKey}
+              onChange={e => setDraftKey(e.target.value)}
+              placeholder={canKeepKey ? `Keeping ${mask(stored as string)}` : KEY_PLACEHOLDER[provider]}
               autoComplete="off"
-              aria-label="Anthropic API key"
-              className="flex-1 h-11 px-3 rounded-md bg-bg border border-border text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+              className={field}
             />
-            <Button type="submit" variant="default" disabled={!draft.trim()}>
+            {canKeepKey && (
+              <p className="text-[11.5px] text-faint">
+                Leave blank to keep your current key.
+              </p>
+            )}
+            {editing && providerChanged && (
+              <p className="text-[11.5px] text-warn">
+                Switching provider needs a {PROVIDER_LABEL[provider]} key — the old one won&apos;t work.
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="ai-model" className={`block ${labelClass}`}>
+              Model
+            </label>
+            <input
+              id="ai-model"
+              type="text"
+              value={draftModel}
+              onChange={e => setDraftModel(e.target.value)}
+              placeholder={DEFAULT_MODEL[provider]}
+              autoComplete="off"
+              spellCheck={false}
+              className={`${field} stat text-[13px]`}
+            />
+          </div>
+
+          {provider === 'openrouter' && (
+            <div className="flex flex-wrap gap-1.5">
+              {OPENROUTER_SUGGESTIONS.map(id => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setDraftModel(id)}
+                  className={`stat rounded-full border px-2.5 py-1 text-[11px] transition-colors duration-150 ease-out-soft ${press} ${focusRing} ${
+                    draftModel === id
+                      ? 'border-transparent bg-accent-wash text-accent'
+                      : 'border-hairline bg-surface-2 text-muted'
+                  }`}
+                >
+                  {id}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <p className="text-xs leading-relaxed text-faint">{PROVIDER_HELP[provider]}</p>
+
+          <div className="flex gap-2">
+            <Button type="submit" variant="default" className="flex-1" disabled={!effectiveKey}>
               Save
             </Button>
             {editing && (
@@ -84,13 +214,9 @@ export function ApiKeyCard() {
                 Cancel
               </Button>
             )}
-          </form>
-          <p className="text-xs text-muted">
-            Get a key at console.anthropic.com → API keys ($5 minimum credit lasts years at this
-            usage).
-          </p>
-        </>
+          </div>
+        </form>
       )}
-    </Card>
+    </SettingsCard>
   );
 }

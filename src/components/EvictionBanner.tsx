@@ -17,7 +17,7 @@ const FOUR_DAYS_MS = 4 * 24 * 60 * 60 * 1000;
  *   && no dismissal within 7 days
  *
  * Copy is verbatim from UI-SPEC ("Your data may be at risk" / "You haven't opened
- * HealthTracker in several days. Install to home screen or export now to avoid
+ * VZN in several days. Install to home screen or export now to avoid
  * browser data loss.").
  *
  * a11y deviation from UI-SPEC: wrapped in role="alert" instead of role="banner".
@@ -64,7 +64,7 @@ export function EvictionBanner() {
         variant="warning"
         title={'Your data may be at risk'}
         body={
-          "You haven't opened HealthTracker in several days. Install to home screen or export now to avoid browser data loss."
+          "You haven't opened VZN in several days. Install to home screen or export now to avoid browser data loss."
         }
         primaryAction={{
           label: 'Install',

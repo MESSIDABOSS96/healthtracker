@@ -4,9 +4,9 @@
 
 import { useRef, useState } from 'react';
 import { Loader2, Upload } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { importAll, ImportError, type ImportSummary } from '@/services/import.svc';
+import { SettingsCard } from './SettingsCard';
 
 type Phase = 'idle' | 'confirm' | 'importing' | 'done' | 'error';
 
@@ -44,15 +44,11 @@ export function ImportCard() {
   };
 
   return (
-    <Card className="bg-surface border border-border rounded-lg p-4 space-y-3">
-      <h2 className="text-base font-semibold text-text flex items-center gap-2">
-        <Upload size={16} className="text-muted" aria-hidden />
-        Restore backup
-      </h2>
-      <p className="text-sm text-muted">
-        Import a HealthTracker backup JSON. This replaces everything currently on this device.
-      </p>
-
+    <SettingsCard
+      title="Restore backup"
+      icon={Upload}
+      description="Import a VZN backup JSON. This replaces everything currently on this device."
+    >
       <input
         ref={fileRef}
         type="file"
@@ -62,17 +58,19 @@ export function ImportCard() {
       />
 
       {phase === 'confirm' && pending ? (
-        <div className="space-y-2">
-          <p className="text-sm text-text">
-            Replace all data on this device with <span className="font-medium">{pending.name}</span>?
+        <div className="space-y-3 rounded-sm border border-warn/30 bg-warn/10 p-3">
+          <p className="text-[13px] leading-relaxed text-text">
+            Replace all data on this device with{' '}
+            <span className="font-medium">{pending.name}</span>? This can&apos;t be undone.
           </p>
           <div className="flex gap-2">
-            <Button type="button" variant="default" onClick={runImport}>
+            <Button type="button" variant="default" size="sm" onClick={runImport}>
               Yes, replace
             </Button>
             <Button
               type="button"
               variant="ghost"
+              size="sm"
               onClick={() => {
                 setPending(null);
                 setPhase('idle');
@@ -86,13 +84,14 @@ export function ImportCard() {
       ) : (
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
+          className="w-full"
           disabled={phase === 'importing'}
           onClick={() => fileRef.current?.click()}
         >
           {phase === 'importing' ? (
             <>
-              <Loader2 size={16} className="animate-spin mr-2" aria-hidden /> Importing…
+              <Loader2 size={16} className="animate-spin" aria-hidden /> Importing…
             </>
           ) : (
             'Choose backup file'
@@ -102,13 +101,12 @@ export function ImportCard() {
 
       {message && (
         <p
-          className="text-xs"
-          style={{ color: phase === 'error' ? 'var(--danger)' : 'var(--muted)' }}
+          className={`mt-3 text-xs leading-relaxed ${phase === 'error' ? 'text-danger' : 'text-muted'}`}
           role={phase === 'error' ? 'alert' : undefined}
         >
           {message}
         </p>
       )}
-    </Card>
+    </SettingsCard>
   );
 }

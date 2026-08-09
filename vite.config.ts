@@ -39,9 +39,9 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
       },
       manifest: {
-        name: 'HealthTracker',
-        short_name: 'HealthTracker',
-        description: 'Personal daily tracker for PT, food, steps, and lifts.',
+        name: 'VZN',
+        short_name: 'VZN',
+        description: 'Daily calorie, training and body-weight tracker.',
         id: '/',                                            // Phase 4 D-15: pin PWA identity (W3C manifest spec)
         categories: ['health', 'fitness', 'productivity'],  // Phase 4 D-15: install-UI / store category hint
         theme_color: '#09090b',

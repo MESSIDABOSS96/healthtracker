@@ -6,8 +6,9 @@
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
 } from 'recharts';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardMeta, CardTitle } from '@/components/ui/card';
 import { CHART, AXIS_TICK, TOOLTIP_STYLES } from './chartTheme';
+import { ChartEmpty, ChartLegend } from './ChartLegend';
 
 export interface TrainingWeekDatum {
   weekLabel: string; // e.g. "7/28"
@@ -17,19 +18,19 @@ export interface TrainingWeekDatum {
 
 export function TrainingChart({ data }: { data: TrainingWeekDatum[] }) {
   const hasAny = data.some(d => d.lift > 0 || d.cardio > 0);
+  const totalSessions = data.reduce((sum, d) => sum + d.lift + d.cardio, 0);
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="flex flex-col">
+      <CardHeader className="flex-row items-baseline justify-between">
         <CardTitle>Training</CardTitle>
+        {hasAny && <CardMeta>{totalSessions} sessions</CardMeta>}
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-1 flex-col">
         {!hasAny ? (
-          <p className="text-sm text-muted py-6 text-center">
-            Check off lifts and cardio to see weekly consistency.
-          </p>
+          <ChartEmpty>Check off lifts and cardio to see weekly consistency.</ChartEmpty>
         ) : (
-          <div className="h-40">
+          <div className="h-40 lg:h-52 lg:h-auto lg:min-h-[13rem] lg:flex-1">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={{ top: 6, right: 4, bottom: 0, left: -30 }} barGap={2}>
                 <CartesianGrid stroke={CHART.grid} strokeOpacity={0.5} vertical={false} />
@@ -64,16 +65,14 @@ export function TrainingChart({ data }: { data: TrainingWeekDatum[] }) {
             </ResponsiveContainer>
           </div>
         )}
-        <div className="mt-1 flex items-center gap-4 text-xs text-muted">
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: 'var(--chart-lift)' }} />
-            Lift
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: 'var(--chart-cardio)' }} />
-            Cardio
-          </span>
-        </div>
+        {hasAny && (
+          <ChartLegend
+            items={[
+              { label: 'Lift', color: 'var(--chart-lift)' },
+              { label: 'Cardio', color: 'var(--chart-cardio)' },
+            ]}
+          />
+        )}
       </CardContent>
     </Card>
   );

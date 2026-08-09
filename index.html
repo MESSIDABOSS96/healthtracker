@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#09090b" />
+    <meta name="theme-color" content="#16212C" />
     <!-- iOS home-screen install support (vite-plugin-pwa does NOT inject these — iOS Safari reads them from HTML, not the manifest).
          Phase 4 D-14 / RESEARCH Pitfall 2: the apple-prefixed tag is "deprecated" but still required by iOS Safari; we ship both
          the apple-prefixed and the standardized `mobile-web-app-capable` name for cross-platform correctness. -->
@@ -11,9 +11,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="HealthTracker" />
+    <meta name="apple-mobile-web-app-title" content="VZN" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
-    <title>HealthTracker</title>
+    <title>VZN</title>
     <!-- Pre-paint theme application — prevents a flash of the wrong theme.
          Mirrors src/lib/theme.ts; keep the storage key and class in sync. -->
     <script>
@@ -26,7 +26,7 @@
               window.matchMedia('(prefers-color-scheme: dark)').matches);
           document.documentElement.classList.toggle('dark', dark);
           var meta = document.querySelector('meta[name="theme-color"]');
-          if (meta) meta.setAttribute('content', dark ? '#09090b' : '#fafafa');
+          if (meta) meta.setAttribute('content', dark ? '#16212C' : '#EAF1F9');
         } catch (e) {
           /* localStorage unavailable — fall through to CSS defaults */
         }

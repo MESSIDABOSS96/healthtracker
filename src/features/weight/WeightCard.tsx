@@ -1,12 +1,19 @@
 // src/features/weight/WeightCard.tsx
 // One-number daily weigh-in + smoothed trend readout. Save on blur / Enter.
+//
+// The input is the biggest type on the card because it's the whole card: the
+// interaction is "type one number and leave". The EMA trend sits beside it as
+// the quiet reference, since the trend — not today's reading — is the number
+// that actually means something day to day.
 
 import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Scale } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardMeta, CardTitle } from '@/components/ui/card';
+import { focusRing } from '@/components/ui/styles';
 import { getWeight, getAllWeights, upsertWeight, computeEma } from '@/services/weight.svc';
 import { useGoals } from '@/features/settings/hooks';
+import { cn } from '@/lib/utils';
 
 export function WeightCard({ dayKey }: { dayKey: string }) {
   const goals = useGoals();
@@ -34,36 +41,43 @@ export function WeightCard({ dayKey }: { dayKey: string }) {
 
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
+      <CardHeader className="flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2">
-          <Scale size={16} className="text-muted" aria-hidden />
+          <Scale size={15} className="text-faint" aria-hidden />
           Weight
         </CardTitle>
         {trend !== undefined && (
-          <span className="text-xs text-muted tabular-nums">
+          <CardMeta>
             trend {trend} {unit}
-          </span>
+          </CardMeta>
         )}
       </CardHeader>
-      <CardContent className="flex items-center gap-3">
-        <input
-          type="number"
-          inputMode="decimal"
-          step="0.1"
-          min="0"
-          placeholder="—"
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={e => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-          }}
-          aria-label={`Body weight in ${unit}`}
-          className="w-28 h-11 px-3 rounded-md bg-bg border border-border text-text text-lg tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-        />
-        <span className="text-sm text-muted">{unit}</span>
+      <CardContent className="flex items-end justify-between gap-3">
+        <div className="flex items-baseline gap-2">
+          <input
+            type="number"
+            inputMode="decimal"
+            step="0.1"
+            min="0"
+            placeholder="—"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={e => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            }}
+            aria-label={`Body weight in ${unit}`}
+            className={cn(
+              'stat h-14 w-[6.5rem] rounded-md border border-hairline bg-surface-2 px-3',
+              'text-[30px] font-semibold leading-none text-text placeholder:font-normal placeholder:text-faint',
+              'transition-[border-color] duration-150 ease-out-soft',
+              focusRing,
+            )}
+          />
+          <span className="text-sm text-muted">{unit}</span>
+        </div>
         {delta !== undefined && delta !== 0 && (
-          <span className="ml-auto text-xs text-muted tabular-nums">
+          <span className="stat pb-1 text-xs text-muted">
             {delta > 0 ? '+' : ''}
             {delta} vs trend
           </span>

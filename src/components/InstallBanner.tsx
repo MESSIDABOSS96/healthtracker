@@ -53,7 +53,7 @@ export function InstallBanner() {
   const android = isAndroid() && getDeferredInstallPrompt() !== null;
   // UI-SPEC §"Copywriting Contract" — verbatim strings.
   const body = android
-    ? 'Add HealthTracker to your home screen.'
+    ? 'Add VZN to your home screen.'
     : 'Tap Share → Add to Home Screen to keep your logs safe.';
 
   return (

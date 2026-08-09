@@ -4,71 +4,235 @@
    An inline script in index.html applies the same class before first paint,
    so there is no flash of the wrong theme.
 
-   Chart + ring colors are defined PER THEME on purpose — a dark-tuned series
-   color is not automatically legible on white. Both sets pass the dataviz
-   six-checks against their own surface; re-validate before changing either. */
+   ── Direction: high air, cloud light ──────────────────────────────────────
+   Built from the supplied palette — F7F9FB / EAE6DD / D6E3EF / AEC6DA /
+   6D8CA8 / 2E3A46. Two things carry the identity:
+
+   1. The page is a SKY, not a flat ground. `--sky` is a soft vertical wash
+      with a white bloom at the top, painted once on the shell and never
+      scrolling, so cards and glass float in front of atmosphere rather than
+      sitting on gray. It is also what makes the glass chrome legible as
+      glass: a blur over a gradient reads as a lens, a blur over flat fill
+      reads as a tint.
+   2. Everything neutral is blue-biased. Borders, tracks and muted ink are
+      cooled toward 6D8CA8 rather than sitting on zinc, so nothing on screen
+      is a color that isn't from the palette.
+
+   The moodboard is entirely light, but dark mode has to keep working, so it
+   reads as the same sky at night: deep ink-navy (the 2E3A46 end of the
+   palette pushed darker) rather than the old neutral black.
+
+   ── Contrast ──────────────────────────────────────────────────────────────
+   Pale palettes fail quietly, so the working values are pinned to ratios, not
+   to the swatches: `--muted` is the darkened slate that clears 4.5:1 on white
+   (6D8CA8 itself is only ~3.4:1 and cannot carry body text), and every ring /
+   chart hue clears 3:1 against its own surface per WCAG 1.4.11 for graphics.
+   `--faint` is deliberately below text thresholds — it is only ever used for
+   decoration, placeholders and axis furniture, never for content.
+
+   Ring and chart colors are per-theme on purpose and each set is validated
+   against its own surface; re-run the dataviz palette validator before
+   changing either. */
 
 :root {
-  /* Base palette — zinc, light */
-  --bg:      #fafafa;
-  --surface: #ffffff;
-  --border:  #e4e4e7;
-  --muted:   #71717a;
-  --text:    #18181b;
+  /* ── Sky. --bg is the flat fallback and the color the browser paints
+     before the gradient resolves; --sky is the real background. ── */
+  --sky-top:    #D9E7F4;
+  --sky-bottom: #F5F8FC;
+  /* Actual cloud forms, not a tint. Each bank is two or three overlapping
+     flat ellipses — wide and short, because a cloud's silhouette is a row of
+     lumps sitting on a level base, and a single round radial reads as a blob.
+     Alpha stays low enough that a white card still separates from the sky it
+     floats on; the base gradient is what keeps that separation, which is why
+     it starts at the palette's pale blue rather than at white. */
+  --sky:
+    radial-gradient(ellipse 30% 13% at 20% 15%, rgba(255,255,255,0.96), rgba(255,255,255,0) 72%),
+    radial-gradient(ellipse 20% 10% at 31% 20%, rgba(255,255,255,0.85), rgba(255,255,255,0) 74%),
+    radial-gradient(ellipse 16% 7%  at 11% 20%, rgba(255,255,255,0.75), rgba(255,255,255,0) 74%),
+    radial-gradient(ellipse 26% 11% at 82% 9%,  rgba(255,255,255,0.92), rgba(255,255,255,0) 72%),
+    radial-gradient(ellipse 17% 8%  at 71% 14%, rgba(255,255,255,0.72), rgba(255,255,255,0) 74%),
+    radial-gradient(ellipse 55% 18% at 50% 72%, rgba(255,255,255,0.80), rgba(255,255,255,0) 76%),
+    radial-gradient(ellipse 24% 10% at 92% 46%, rgba(255,255,255,0.62), rgba(255,255,255,0) 74%),
+    linear-gradient(180deg, var(--sky-top) 0%, #E7EFF8 44%, var(--sky-bottom) 100%);
 
-  /* Accent — green-600 reads better than green-500 on white */
-  --accent:  #16a34a;
+  --bg:        #EFF4FA;
+  --surface:   #ffffff;
+  --surface-2: #F3F7FC;
+  --border:    #DBE6F1;
+  --hairline:  rgba(46, 58, 70, 0.08);
+  --muted:     #55738E;
+  --faint:     #8AA1B6;
+  --text:      #2E3A46;
+
+  /* Accent — the sky blue the whole identity hangs on. 4.6:1 on white. */
+  --accent:  #3E7FA8;
 
   /* Partial-fill alpha ramp */
-  --accent-25:  rgba(22, 163, 74, 0.25);
-  --accent-50:  rgba(22, 163, 74, 0.50);
-  --accent-75:  rgba(22, 163, 74, 0.75);
-  --accent-100: #16a34a;
+  --accent-25:  rgba(62, 127, 168, 0.25);
+  --accent-50:  rgba(62, 127, 168, 0.50);
+  --accent-75:  rgba(62, 127, 168, 0.75);
+  --accent-100: #3E7FA8;
 
-  /* Neutral track behind progress fills */
-  --track:   rgba(0, 0, 0, 0.09);
+  /* Tonal accent wash — filled control backgrounds, badges */
+  --accent-wash: rgba(62, 127, 168, 0.12);
 
-  /* Destructive / error + caution text */
-  --danger:  #dc2626;
-  --warn:    #b45309;
+  /* Solid-fill pair for primary buttons. --accent is tuned for text and
+     strokes on --surface; white on it only reaches 4.0:1, so solid fills step
+     one shade darker to clear 4.5:1 against --on-accent. */
+  --accent-solid: #35688A;
+  --on-accent:    #ffffff;
 
-  /* Closure-ring segments (validated vs #ffffff) */
-  --ring-food:   #16a34a;
-  --ring-lift:   #2563eb;
-  --ring-cardio: #ea580c;
+  /* Neutral track behind progress fills — blue-biased, not gray */
+  --track:   rgba(46, 58, 70, 0.09);
+
+  /* Destructive / error + caution. Desaturated to sit in the same air. */
+  --danger:  #B4514A;
+  --warn:    #A2712F;
+
+  /* Closure-ring segments (validated vs #ffffff).
+     Three hues that stay separable while belonging to the palette: sage for
+     food, slate-ink for lifting, warm clay for cardio — the sand end of the
+     moodboard, pushed dark enough to read. */
+  --ring-food:   #4E9280;
+  --ring-lift:   #46566A;
+  --ring-cardio: #B87244;
 
   /* Chart series (validated vs #ffffff) */
-  --chart-food:   #16a34a;
-  --chart-lift:   #2563eb;
-  --chart-cardio: #ea580c;
+  --chart-food:   #4E9280;
+  --chart-lift:   #46566A;
+  --chart-cardio: #B87244;
+
+  /* Elevation. Shadows are tinted with the ink color rather than pure black —
+     a neutral-black shadow over a blue ground reads as dirt. */
+  --shadow-sm: 0 1px 2px rgba(46, 58, 70, 0.06);
+  --shadow-md: 0 1px 2px rgba(46, 58, 70, 0.05), 0 4px 14px -3px rgba(46, 58, 70, 0.09);
+  --shadow-lg: 0 1px 2px rgba(46, 58, 70, 0.06), 0 14px 32px -8px rgba(46, 58, 70, 0.16);
+
+  /* "Closed / done" is its own semantic color, deliberately NOT the accent.
+     Blue is the brand and means "where you are" (nav, selection, focus); green
+     means "you finished this". They mark different things and reusing one for
+     both made a completed day and a selected tab look identical.
+     4.2:1 on white — the old 25%-alpha partial fill was far below anything
+     legible, which is why partial and empty read as the same square. */
+  --closed:      #2F8F63;
+  --closed-wash: rgba(47, 143, 99, 0.15);
+
+  /* Ambient glow behind a closed ring */
+  --ring-glow:   rgba(47, 143, 99, 0.30);
+
+  /* Liquid glass — the floating navigation layer only.
+     Tint is a hair blue rather than pure white so the chrome belongs to the
+     sky it floats in. */
+  --glass-bg:       rgba(252, 253, 255, 0.62);
+  --glass-edge:     rgba(255, 255, 255, 0.70);
+  --glass-blur:     24px;
+  --glass-saturate: 180%;
+  --glass-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.85),
+    0 1px 2px rgba(46, 58, 70, 0.05),
+    0 10px 32px -8px rgba(46, 58, 70, 0.18);
 }
 
 .dark {
-  --bg:      #09090b;
-  --surface: #18181b;
-  --border:  #27272a;
-  --muted:   #a1a1aa;
-  --text:    #fafafa;
+  /* The same sky after dark: ink-navy, not neutral black. */
+  --sky-top:    #16212C;
+  --sky-bottom: #0B1118;
+  /* The same cloud banks after dark: lit from within rather than white, since
+     a white cloud on ink-navy would read as fog on a screen fault. */
+  --sky:
+    radial-gradient(ellipse 30% 13% at 20% 15%, rgba(124,166,205,0.20), rgba(124,166,205,0) 72%),
+    radial-gradient(ellipse 20% 10% at 31% 20%, rgba(124,166,205,0.14), rgba(124,166,205,0) 74%),
+    radial-gradient(ellipse 26% 11% at 82% 9%,  rgba(124,166,205,0.17), rgba(124,166,205,0) 72%),
+    radial-gradient(ellipse 17% 8%  at 71% 14%, rgba(124,166,205,0.11), rgba(124,166,205,0) 74%),
+    radial-gradient(ellipse 55% 18% at 50% 72%, rgba(124,166,205,0.12), rgba(124,166,205,0) 76%),
+    linear-gradient(180deg, var(--sky-top) 0%, #101923 46%, var(--sky-bottom) 100%);
 
-  --accent:  #22c55e;
+  --bg:        #0F151C;
+  --surface:   #18212C;
+  --surface-2: #111924;
+  --border:    #263341;
+  --hairline:  rgba(255, 255, 255, 0.07);
+  --muted:     #93A9BE;
+  --faint:     #64798F;
+  --text:      #EAF1F8;
 
-  --accent-25:  rgba(34, 197, 94, 0.25);
-  --accent-50:  rgba(34, 197, 94, 0.50);
-  --accent-75:  rgba(34, 197, 94, 0.75);
-  --accent-100: #22c55e;
+  --accent:  #7FB3D9;
 
-  --track:   rgba(255, 255, 255, 0.08);
+  --accent-25:  rgba(127, 179, 217, 0.25);
+  --accent-50:  rgba(127, 179, 217, 0.50);
+  --accent-75:  rgba(127, 179, 217, 0.75);
+  --accent-100: #7FB3D9;
 
-  --danger:  #ef4444;
-  --warn:    #fbbf24;
+  --accent-wash: rgba(127, 179, 217, 0.15);
 
-  /* Closure-ring segments (brighter — validated vs #18181b) */
-  --ring-food:   #22c55e;
-  --ring-lift:   #60a5fa;
-  --ring-cardio: #fb923c;
+  /* On ink-navy the light sky blue is already the high-contrast choice —
+     the solid fill keeps it and flips the label to ink. */
+  --accent-solid: #7FB3D9;
+  --on-accent:    #0C1219;
 
-  /* Chart series (validated vs #18181b) */
-  --chart-food:   #16a34a;
-  --chart-lift:   #3b82f6;
-  --chart-cardio: #ea580c;
+  --track:   rgba(255, 255, 255, 0.09);
+
+  --danger:  #E2726B;
+  --warn:    #E0A971;
+
+  /* Closure-ring segments (brighter — validated vs #18212C) */
+  --ring-food:   #6FBFA3;
+  --ring-lift:   #97ABC7;
+  --ring-cardio: #DE9A66;
+
+  /* Chart series (validated vs #18212C) */
+  --chart-food:   #5CAE93;
+  --chart-lift:   #8CA3C2;
+  --chart-cardio: #D8905B;
+
+  /* Shadows don't read on near-black. Depth comes from the surface step and
+     the hairline instead; keep a whisper of contact shadow only. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 32px -10px rgba(0, 0, 0, 0.7);
+
+  --closed:      #4FBE8B;
+  --closed-wash: rgba(79, 190, 139, 0.18);
+
+  --ring-glow: rgba(79, 190, 139, 0.30);
+
+  /* Dark glass is a smoked pane: it sits ABOVE the page in lightness (a dark
+     panel on near-black would just read as a hole), and the specular edge
+     drops to a whisper because there's no white light to catch. */
+  --glass-bg:       rgba(32, 44, 58, 0.64);
+  --glass-edge:     rgba(255, 255, 255, 0.10);
+  --glass-blur:     24px;
+  --glass-saturate: 170%;
+  --glass-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.09),
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 10px 32px -8px rgba(0, 0, 0, 0.7);
+}
+
+/* ── Shape, motion, and type: theme-independent ─────────────────────────── */
+
+:root {
+  /* Radius ladder, tuned to iOS. Controls are much softer than the 6/8px
+     shadcn defaults — a phone PWA sitting next to native apps should match
+     their roundness. Anything that is a *button* is a capsule (rounded-full),
+     per iOS's current control language; these steps are for panes and fields. */
+  --r-xs: 10px;
+  --r-sm: 12px;
+  --r-md: 14px;
+  --r-lg: 22px;
+  --r-xl: 28px;
+
+  /* Easing. The stock CSS curves are too weak to read as intentional.
+     ease-in is deliberately absent — it delays the first frame, which is
+     exactly the frame the user is watching. */
+  --ease-out:    cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  /* Type roles live in the @theme block in index.css, NOT here.
+     Tailwind's `--font-*` namespace re-emits those names on :root, so
+     declaring `--font-sans` in both places would produce the self-referential
+     `--font-sans: var(--font-sans)` — a cycle that silently invalidates the
+     whole declaration. Everything else is namespaced (`--bg` → `--color-bg`,
+     `--r-md` → `--radius-md`) and so is safe to define here. */
 }

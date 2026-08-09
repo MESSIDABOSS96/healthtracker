@@ -2,6 +2,7 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { focusRing, press } from '@/components/ui/styles';
 
 /**
  * Reusable banner primitive (built on Card).
@@ -9,6 +10,10 @@ import { cn } from '@/lib/utils';
  * Plan 01-03 consumes this for both the Install banner (D-11) and
  * Eviction-warning banner (D-14). Signature is contract-locked by the
  * <interfaces> block in 01-01 PLAN.
+ *
+ * The warning variant is a tonal wash rather than a colored outline — a banner
+ * about data loss should read as urgent at a glance, and a 1px accent edge on
+ * an otherwise identical card doesn't.
  *
  * Note: UI-SPEC suggests role="banner" for install/eviction landmarks, but
  * applying it here would create duplicate landmarks if multiple banners mount
@@ -35,30 +40,27 @@ export function Banner({
     <Card
       role="region"
       aria-label="Safety notice"
-      className={cn(
-        'bg-surface border border-border rounded-lg p-4',
-        variant === 'warning' && 'border-accent/40',
-      )}
+      className={cn('p-4', variant === 'warning' && 'border-warn/25 bg-warn/10')}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1">
-          <h2 className="text-base font-semibold text-text">{title}</h2>
-          <p className="text-sm text-muted mt-1">{body}</p>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <h2 className="font-display text-[15px] font-semibold tracking-[-0.015em] text-text">
+            {title}
+          </h2>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted">{body}</p>
           {primaryAction && (
-            <div className="mt-3">
-              <Button variant="default" onClick={primaryAction.onClick}>
-                {primaryAction.label}
-              </Button>
-            </div>
+            <Button variant="default" size="sm" className="mt-3" onClick={primaryAction.onClick}>
+              {primaryAction.label}
+            </Button>
           )}
         </div>
         <button
           type="button"
           aria-label="Dismiss"
           onClick={onDismiss}
-          className="text-muted p-2 -m-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-md"
+          className={`-mr-1.5 -mt-1.5 grid h-9 w-9 shrink-0 place-items-center rounded-full text-faint ${press} ${focusRing}`}
         >
-          <X size={20} />
+          <X size={17} />
         </button>
       </div>
     </Card>

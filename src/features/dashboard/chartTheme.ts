@@ -11,24 +11,35 @@ export const CHART = {
   cardio: 'var(--chart-cardio)',
   grid: 'var(--border)',
   muted: 'var(--muted)',
+  faint: 'var(--faint)',
 } as const;
 
-export const AXIS_TICK = { fill: 'var(--muted)', fontSize: 11 } as const;
+/** Axis ticks are reference furniture, not content — they sit at the faintest
+ *  legible step so the series reads first. */
+export const AXIS_TICK = {
+  fill: 'var(--faint)',
+  fontSize: 10.5,
+  fontFamily: 'var(--font-display)',
+} as const;
 
+/** Tooltips float above the card, so they get the raised shadow and the
+ *  surface color rather than a boxed outline on the page ground. */
 export const TOOLTIP_STYLES: {
   contentStyle: CSSProperties;
   labelStyle: CSSProperties;
   itemStyle: CSSProperties;
 } = {
   contentStyle: {
-    backgroundColor: 'var(--bg)',
-    border: '1px solid var(--border)',
-    borderRadius: 8,
+    backgroundColor: 'var(--surface)',
+    border: '1px solid var(--hairline)',
+    borderRadius: 'var(--r-sm)',
+    boxShadow: 'var(--shadow-lg)',
     fontSize: 12,
-    padding: '6px 10px',
+    padding: '8px 11px',
+    fontFamily: 'var(--font-display)',
   },
-  labelStyle: { color: 'var(--muted)', marginBottom: 2 },
-  itemStyle: { color: 'var(--text)', padding: 0 },
+  labelStyle: { color: 'var(--faint)', marginBottom: 3, fontWeight: 500 },
+  itemStyle: { color: 'var(--text)', padding: 0, fontWeight: 600 },
 };
 
 /** "2026-08-08" → "8/8" for compact axis ticks. */

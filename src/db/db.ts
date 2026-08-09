@@ -71,6 +71,10 @@ export class HealthTrackerDB extends Dexie {
   longTermGoals!: Table<LongTermGoals, string>;
 
   constructor() {
+    // FROZEN. The app is called VZN now, but this string is the IndexedDB
+    // database name — changing it doesn't rename anything, it points the app at
+    // a new, empty database and orphans every existing log. Product name and
+    // storage identity are different things; only the former is cosmetic.
     super('HealthTrackerDB');
     this.version(1).stores({
       'ptTemplates':  'id, name, createdAt',

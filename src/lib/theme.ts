@@ -8,9 +8,12 @@ import { THEME_KEY } from './storageKeys';
 
 export type ThemePref = 'system' | 'light' | 'dark';
 
+/** Browser-chrome color. Matches the sticky header's surface, not the page
+ *  ground, so the status bar reads as part of the header. Keep in sync with
+ *  the pre-paint script in index.html. */
 const SURFACE_COLOR: Record<'light' | 'dark', string> = {
-  light: '#fafafa',
-  dark: '#09090b',
+  light: '#EAF1F9',
+  dark: '#16212C',
 };
 
 export function getThemePref(): ThemePref {

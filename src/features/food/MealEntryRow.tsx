@@ -1,8 +1,12 @@
 // src/features/food/MealEntryRow.tsx
 //
-// One meal entry. Resting state shows `{name} · {servings}× {servingLabel}` on the
-// left and the bucket badge on the right. Tap to enter inline-edit: servings
-// number input + 4-pill bucket radiogroup + footer (Delete / Cancel / Save).
+// One meal entry. Resting state is a two-line row — food name over its serving
+// detail — with the entry's calories set right, so the list scans down a clean
+// numeric column. Tapping expands inline edit: servings + bucket + footer.
+//
+// The bucket badge that used to sit at the right of each row is gone: the list
+// is grouped by bucket, so every row repeated its own section heading. The
+// calorie figure took the slot instead, which the row didn't show at all.
 //
 // Per D-20 — only servings + bucket are editable; foodId is immutable.
 // Per UI-SPEC §"Destructive confirmations: NONE" — meal-entry delete is silent.
@@ -11,10 +15,13 @@
 import { useState, useEffect } from 'react';
 import type { Food, MealBucket, MealEntry } from '@/db/schema';
 import { Button } from '@/components/ui/button';
+import { Segmented } from '@/components/ui/segmented';
+import { field, focusRing } from '@/components/ui/styles';
 import { updateMealEntry, deleteMealEntry } from '@/services/meals.svc';
 import { cn } from '@/lib/utils';
 
 const BUCKETS: MealBucket[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+const BUCKET_OPTIONS = BUCKETS.map(b => ({ value: b, label: b }));
 
 interface MealEntryRowProps {
   entry: MealEntry;
@@ -58,76 +65,75 @@ export function MealEntryRow({ entry, food }: MealEntryRowProps) {
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="w-full flex items-center justify-between py-3 text-left hover:bg-border/20 px-2 rounded-md"
+          className={cn(
+            '-mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-sm px-2 py-2.5 text-left',
+            'transition-colors duration-150 ease-out-soft',
+            '[@media(hover:hover)]:hover:bg-surface-2',
+            focusRing,
+          )}
         >
-          <span className="text-sm text-text">
-            {food?.name ?? '—'} · {entry.servings}× {food?.servingLabel ?? ''}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[14px] text-text">{food?.name ?? '—'}</span>
+            <span className="stat mt-0.5 block text-[11.5px] text-faint">
+              {entry.servings} × {food?.servingLabel ?? 'serving'}
+            </span>
           </span>
-          <span className="text-xs text-muted lowercase">{entry.bucket}</span>
+          <span className="stat shrink-0 text-[13px] text-muted">
+            {Math.round(entry.computedCalories).toLocaleString()}
+          </span>
         </button>
       </li>
     );
   }
 
   return (
-    <li className="py-3 px-2 space-y-3">
-      <div className="space-y-1">
-        <label htmlFor={`servings-${entry.id}`} className="block text-xs text-muted">Servings</label>
-        <input
-          id={`servings-${entry.id}`}
-          type="number"
-          inputMode="decimal"
-          step="0.1"
-          value={servings}
-          onChange={(e) => setServings(parseFloat(e.target.value) || 0)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') handleCancel();
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              handleSave();
-            }
-          }}
-          aria-label="Servings"
-          className="w-24 h-11 px-3 rounded-md bg-bg border border-border text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+    <li className="py-3 space-y-3.5">
+      <p className="text-[14px] font-medium text-text">{food?.name ?? '—'}</p>
+
+      <div className="flex items-end gap-3">
+        <label htmlFor={`servings-${entry.id}`} className="block">
+          <span className="mb-1.5 block text-xs font-medium text-muted">Servings</span>
+          <input
+            id={`servings-${entry.id}`}
+            type="number"
+            inputMode="decimal"
+            step="0.1"
+            value={servings}
+            onChange={e => setServings(parseFloat(e.target.value) || 0)}
+            onKeyDown={e => {
+              if (e.key === 'Escape') handleCancel();
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSave();
+              }
+            }}
+            aria-label="Servings"
+            className={cn(field, 'stat w-24')}
+          />
+        </label>
+        <p className="pb-3 text-[13px] text-muted">× {food?.servingLabel ?? 'serving'}</p>
+      </div>
+
+      <div>
+        <p className="mb-1.5 text-xs font-medium text-muted">Meal</p>
+        <Segmented
+          value={bucket}
+          onChange={setBucket}
+          options={BUCKET_OPTIONS}
+          ariaLabel="Meal"
+          itemClassName="capitalize"
         />
       </div>
 
-      <div className="space-y-1">
-        <p className="block text-xs text-muted">Meal</p>
-        <div role="radiogroup" aria-label="Meal" className="flex gap-2">
-          {BUCKETS.map((b) => (
-            <button
-              key={b}
-              type="button"
-              role="radio"
-              aria-checked={bucket === b}
-              onClick={() => setBucket(b)}
-              className={cn(
-                'h-11 flex-1 rounded-md border text-sm capitalize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
-                bucket === b
-                  ? 'bg-bg border-accent text-accent'
-                  : 'bg-bg border-border text-text hover:bg-border/40',
-              )}
-            >
-              {b}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex gap-2 justify-end pt-1">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={handleDelete}
-          style={{ color: 'var(--danger)' }}
-        >
+      <div className="flex items-center gap-2">
+        <Button type="button" variant="danger" size="sm" onClick={handleDelete}>
           Delete
         </Button>
-        <Button type="button" variant="ghost" onClick={handleCancel}>
+        <div className="flex-1" />
+        <Button type="button" variant="ghost" size="sm" onClick={handleCancel}>
           Cancel
         </Button>
-        <Button type="button" variant="default" onClick={handleSave}>
+        <Button type="button" variant="default" size="sm" onClick={handleSave}>
           Save
         </Button>
       </div>

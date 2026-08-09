@@ -18,11 +18,14 @@
 // no toast, no spinner, no modal after save. useLiveQuery reactivity is the
 // signal.
 
+import { Flag } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { field, label as labelClass } from '@/components/ui/styles';
+import { Segmented } from '@/components/ui/segmented';
+import { SettingsCard } from './SettingsCard';
 import { useGoals } from './hooks';
 import { saveGoals } from '@/services/goals.svc';
 
@@ -57,6 +60,11 @@ const goalsSchema = z.object({
 });
 type GoalsInput = z.infer<typeof goalsSchema>;
 
+const WEIGHT_UNITS = [
+  { value: 'lb', label: 'lb' },
+  { value: 'kg', label: 'kg' },
+] as const satisfies ReadonlyArray<{ value: GoalsInput['weightUnit']; label: string }>;
+
 export function GoalsForm() {
   const current = useGoals();
 
@@ -87,106 +95,98 @@ export function GoalsForm() {
   });
 
   return (
-    <Card className="bg-surface border border-border rounded-lg p-4 space-y-4">
-      <h2 className="text-base font-semibold text-text">Daily goals</h2>
+    <SettingsCard
+      title="Daily goals"
+      icon={Flag}
+      description="Today's targets. These drive the meters on the Daily tab."
+    >
       <form onSubmit={onSubmit} className="space-y-4">
-        <div className="space-y-1">
-          <label htmlFor="goals-calories" className="block text-xs text-muted">Calories</label>
+        <div className="space-y-1.5">
+          <label htmlFor="goals-calories" className={`block ${labelClass}`}>Calories</label>
           <input
             id="goals-calories"
             type="number"
             inputMode="numeric"
             aria-invalid={!!errors.calories}
             aria-describedby={errors.calories ? 'goals-calories-error' : undefined}
-            className="h-11 w-full px-3 rounded-md bg-bg border border-border text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+            className={`${field} stat`}
             {...register('calories', { valueAsNumber: true })}
           />
           {errors.calories && (
-            <p id="goals-calories-error" className="text-xs" style={{ color: 'var(--danger)' }}>
+            <p id="goals-calories-error" className="text-xs text-danger">
               {errors.calories.message}
             </p>
           )}
         </div>
 
-        <div className="space-y-1">
-          <label htmlFor="goals-protein" className="block text-xs text-muted">Protein (g)</label>
+        <div className="space-y-1.5">
+          <label htmlFor="goals-protein" className={`block ${labelClass}`}>Protein (g)</label>
           <input
             id="goals-protein"
             type="number"
             inputMode="numeric"
             aria-invalid={!!errors.proteinG}
             aria-describedby={errors.proteinG ? 'goals-protein-error' : undefined}
-            className="h-11 w-full px-3 rounded-md bg-bg border border-border text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+            className={`${field} stat`}
             {...register('proteinG', { valueAsNumber: true })}
           />
           {errors.proteinG && (
-            <p id="goals-protein-error" className="text-xs" style={{ color: 'var(--danger)' }}>
+            <p id="goals-protein-error" className="text-xs text-danger">
               {errors.proteinG.message}
             </p>
           )}
         </div>
 
-        <div className="space-y-1">
-          <label htmlFor="goals-carbs" className="block text-xs text-muted">Carbs (g)</label>
+        <div className="space-y-1.5">
+          <label htmlFor="goals-carbs" className={`block ${labelClass}`}>Carbs (g)</label>
           <input
             id="goals-carbs"
             type="number"
             inputMode="numeric"
             aria-invalid={!!errors.carbsG}
             aria-describedby={errors.carbsG ? 'goals-carbs-error' : undefined}
-            className="h-11 w-full px-3 rounded-md bg-bg border border-border text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+            className={`${field} stat`}
             {...register('carbsG', { valueAsNumber: true })}
           />
           {errors.carbsG && (
-            <p id="goals-carbs-error" className="text-xs" style={{ color: 'var(--danger)' }}>
+            <p id="goals-carbs-error" className="text-xs text-danger">
               {errors.carbsG.message}
             </p>
           )}
         </div>
 
-        <div className="space-y-1">
-          <label htmlFor="goals-fat" className="block text-xs text-muted">Fat (g)</label>
+        <div className="space-y-1.5">
+          <label htmlFor="goals-fat" className={`block ${labelClass}`}>Fat (g)</label>
           <input
             id="goals-fat"
             type="number"
             inputMode="numeric"
             aria-invalid={!!errors.fatG}
             aria-describedby={errors.fatG ? 'goals-fat-error' : undefined}
-            className="h-11 w-full px-3 rounded-md bg-bg border border-border text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+            className={`${field} stat`}
             {...register('fatG', { valueAsNumber: true })}
           />
           {errors.fatG && (
-            <p id="goals-fat-error" className="text-xs" style={{ color: 'var(--danger)' }}>
+            <p id="goals-fat-error" className="text-xs text-danger">
               {errors.fatG.message}
             </p>
           )}
         </div>
 
-        <div className="space-y-1">
-          <p className="block text-xs text-muted">Weight unit</p>
-          <div role="radiogroup" aria-label="Weight unit" className="flex gap-2">
-            {(['lb', 'kg'] as const).map(u => (
-              <button
-                key={u}
-                type="button"
-                role="radio"
-                aria-checked={weightUnit === u}
-                onClick={() => setValue('weightUnit', u, { shouldDirty: true })}
-                className={
-                  'h-11 flex-1 rounded-md border text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg ' +
-                  (weightUnit === u
-                    ? 'bg-bg border-accent text-accent'
-                    : 'bg-bg border-border text-text hover:bg-border/40')
-                }
-              >
-                {u}
-              </button>
-            ))}
-          </div>
+        <div className="space-y-1.5">
+          <p className={`block ${labelClass}`}>Weight unit</p>
+          <Segmented
+            value={weightUnit}
+            onChange={u => setValue('weightUnit', u, { shouldDirty: true })}
+            options={WEIGHT_UNITS}
+            ariaLabel="Weight unit"
+          />
         </div>
 
-        <Button type="submit" variant="default" className="w-full">Save goals</Button>
+        <Button type="submit" variant="default" className="w-full">
+          Save goals
+        </Button>
       </form>
-    </Card>
+    </SettingsCard>
   );
 }

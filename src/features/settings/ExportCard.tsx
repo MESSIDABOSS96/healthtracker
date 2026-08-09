@@ -4,7 +4,7 @@
 //
 // UX decisions (all locked in CONTEXT.md):
 //   D-01 — Single entry point in Settings (Card visual match to Install Card).
-//   D-02 — Filename `healthtracker-${todayKey()}.json` — LOCAL day via lib/dayKey.ts.
+//   D-02 — Filename `vzn-${todayKey()}.json` — LOCAL day via lib/dayKey.ts.
 //          NEVER use the UTC-date split pattern (Pitfall #4).
 //   D-03 — Post-save confirmation = inline "Last exported: {relative time}" line.
 //          No toast, no modal, no Banner — just text inside the Card.
@@ -25,10 +25,10 @@
 // after a.click() cancels the download in Firefox / some Chromium versions.
 
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Download, Loader2 } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { SettingsCard } from './SettingsCard';
 import { db } from '@/db/db';
 import { todayKey } from '@/lib/dayKey';
 import { LAST_EXPORTED_KEY } from '@/lib/storageKeys';
@@ -58,7 +58,7 @@ function triggerDownload(json: string, dayKey: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `healthtracker-${dayKey}.json`;
+  a.download = `vzn-${dayKey}.json`;
   a.click();
   // 30s delay per RESEARCH Pitfall 1 — Mozilla bugzilla 1282407 + Chromium issue 41380177.
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
@@ -143,20 +143,15 @@ export function ExportCard() {
   }
 
   return (
-    <Card className="bg-surface border border-border rounded-lg p-4">
-      <h2 className="text-base font-semibold text-text">Export data</h2>
-      <p className="text-sm text-muted mt-1">
-        Download all your logs as a single JSON file. Keep it somewhere safe — this is your backup.
-      </p>
-      {lastExportedLine && (
-        <p className="text-xs text-muted mt-2">{lastExportedLine}</p>
-      )}
-      {nudgeLine && (
-        <p className="text-xs text-muted mt-1">{nudgeLine}</p>
-      )}
-      <div className="mt-3">
+    <SettingsCard
+      title="Export data"
+      icon={Download}
+      description="Download all your logs as a single JSON file. Keep it somewhere safe — this is your backup."
+    >
+      <div className="space-y-3">
         <Button
           variant="default"
+          className="w-full"
           disabled={state === 'exporting'}
           onClick={() => {
             void onExport();
@@ -165,12 +160,16 @@ export function ExportCard() {
           {state === 'exporting' && <Loader2 className="size-4 animate-spin" />}
           {state === 'exporting' ? 'Exporting…' : 'Export data'}
         </Button>
+
+        {lastExportedLine && <p className="text-xs text-faint">{lastExportedLine}</p>}
+        {nudgeLine && <p className="text-xs text-warn">{nudgeLine}</p>}
+        {state === 'error' && (
+          <p className="text-xs leading-relaxed text-danger" role="alert">
+            Export failed — try again. If it keeps failing, your library may be too large for
+            in-memory encoding.
+          </p>
+        )}
       </div>
-      {state === 'error' && (
-        <p className="text-xs mt-2" style={{ color: 'var(--danger)' }}>
-          Export failed — try again. If it keeps failing, your library may be too large for in-memory encoding.
-        </p>
-      )}
-    </Card>
+    </SettingsCard>
   );
 }

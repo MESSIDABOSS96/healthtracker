@@ -46,7 +46,7 @@ export async function importAll(json: string): Promise<ImportSummary> {
   }
 
   if (typeof envelope !== 'object' || envelope === null || !envelope.data) {
-    throw new ImportError("That file doesn't look like a HealthTracker backup.");
+    throw new ImportError("That file doesn't look like a VZN backup.");
   }
   if (envelope.schemaVersion !== db.verno) {
     throw new ImportError(

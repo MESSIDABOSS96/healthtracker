@@ -7,8 +7,9 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ReferenceLine,
 } from 'recharts';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardMeta, CardTitle } from '@/components/ui/card';
 import { CHART, AXIS_TICK, TOOLTIP_STYLES, shortDay } from './chartTheme';
+import { ChartEmpty, ChartLegend } from './ChartLegend';
 
 export interface CaloriesDatum {
   dayKey: string;
@@ -29,22 +30,20 @@ export function CaloriesChart({ data, target, adherenceBand = 0.1 }: CaloriesCha
       : 0;
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-baseline justify-between space-y-0">
+    <Card className="flex flex-col">
+      <CardHeader className="flex-row items-baseline justify-between">
         <CardTitle>Eating</CardTitle>
         {loggedDays.length > 0 && (
-          <span className="text-xs text-muted tabular-nums">
+          <CardMeta>
             {loggedDays.length} logged{target > 0 && <> · {onTarget} on target</>}
-          </span>
+          </CardMeta>
         )}
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-1 flex-col">
         {loggedDays.length === 0 ? (
-          <p className="text-sm text-muted py-6 text-center">
-            Log meals and your daily calories will chart here.
-          </p>
+          <ChartEmpty>Log meals and your daily calories will chart here.</ChartEmpty>
         ) : (
-          <div className="h-40">
+          <div className="h-40 lg:h-52 lg:h-auto lg:min-h-[13rem] lg:flex-1">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={{ top: 6, right: 4, bottom: 0, left: -18 }} barCategoryGap={2}>
                 <CartesianGrid stroke={CHART.grid} strokeOpacity={0.5} vertical={false} />
@@ -73,9 +72,9 @@ export function CaloriesChart({ data, target, adherenceBand = 0.1 }: CaloriesCha
                 {target > 0 && (
                   <ReferenceLine
                     y={target}
-                    stroke={CHART.muted}
-                    strokeDasharray="4 4"
-                    strokeOpacity={0.8}
+                    stroke={CHART.faint}
+                    strokeDasharray="3 4"
+                    strokeOpacity={0.9}
                   />
                 )}
                 <Bar
@@ -88,10 +87,13 @@ export function CaloriesChart({ data, target, adherenceBand = 0.1 }: CaloriesCha
             </ResponsiveContainer>
           </div>
         )}
-        {target > 0 && (
-          <p className="mt-1 text-xs text-muted" aria-hidden>
-            dashed line = {target} cal target
-          </p>
+        {target > 0 && loggedDays.length > 0 && (
+          <ChartLegend
+            items={[
+              { label: 'Calories', color: 'var(--chart-food)', shape: 'bar' },
+              { label: `Target · ${target.toLocaleString()} cal`, color: 'var(--faint)', shape: 'line' },
+            ]}
+          />
         )}
       </CardContent>
     </Card>

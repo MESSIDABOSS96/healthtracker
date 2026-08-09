@@ -2,12 +2,19 @@
 // The long-term benchmark: where you started, where you are, where you're
 // headed — plus weekly training frequency against target.
 //
+// The headline is the distance left, because that's the number the goal is
+// about; the start/now/goal figures underneath are the scale it's measured on
+// and now carry labels, since three bare numbers in a row don't say which is
+// which.
+//
 // Projections are shown only when the trend genuinely supports one (see
 // longTermGoals.svc); otherwise the card says why rather than inventing a date.
 
 import { Link } from 'react-router-dom';
 import { Target, TrendingDown, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Meter } from '@/components/ui/meter';
+import { eyebrow } from '@/components/ui/styles';
 import type { LongTermGoals } from '@/db/schema';
 import type { WeightGoalProgress } from '@/services/longTermGoals.svc';
 import { keyToDate } from '@/lib/dayKey';
@@ -39,20 +46,41 @@ function FrequencyRow({
   target: number;
   color: string;
 }) {
-  const percent = Math.min(100, (done / target) * 100);
   const met = done >= target;
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-muted w-12">{label}</span>
-      <div className="relative h-2 flex-1 rounded-full bg-track overflow-hidden">
-        <div
-          className="h-full rounded-full transition-[width] duration-300"
-          style={{ width: `${percent}%`, backgroundColor: color }}
-        />
-      </div>
-      <span className={`text-xs tabular-nums w-12 text-right ${met ? 'text-accent' : 'text-muted'}`}>
+    <div className="flex items-center gap-3">
+      <span className="w-12 shrink-0 text-xs text-muted">{label}</span>
+      <Meter value={done} max={target} color={color} ariaLabel={`${label} sessions this week`} />
+      <span
+        className={`stat w-10 shrink-0 text-right text-xs font-medium ${met ? 'text-accent' : 'text-muted'}`}
+      >
         {done}/{target}
       </span>
+    </div>
+  );
+}
+
+/** start / now / goal readout under the progress bar — each sits over the end
+ *  of the bar it describes, so the three numbers read as a scale, not a list. */
+function Milestone({
+  value,
+  unit,
+  label,
+  align,
+  strong,
+}: {
+  value: number;
+  unit: string;
+  label: string;
+  align: 'left' | 'center' | 'right';
+  strong?: boolean;
+}) {
+  return (
+    <div className={align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'}>
+      <p className={`stat text-[13px] ${strong ? 'font-semibold text-text' : 'text-muted'}`}>
+        {round1(value)} {unit}
+      </p>
+      <p className="mt-0.5 text-[10.5px] text-faint">{label}</p>
     </div>
   );
 }
@@ -63,17 +91,17 @@ export function GoalProgressCard({ goals, progress, unit, thisWeek }: GoalProgre
 
   if (!hasAnyGoal) {
     return (
-      <Card>
+      <Card className="flex flex-col">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Target size={16} className="text-muted" aria-hidden />
+            <Target size={15} className="text-faint" aria-hidden />
             Goals
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted">
+        <CardContent className="flex flex-1 items-center">
+          <p className="text-[13px] leading-relaxed text-muted">
             Set a goal weight or weekly training targets in{' '}
-            <Link to="/settings" className="text-accent underline underline-offset-2">
+            <Link to="/settings" className="font-medium text-accent underline underline-offset-2">
               Settings
             </Link>{' '}
             to benchmark your progress here.
@@ -83,60 +111,64 @@ export function GoalProgressCard({ goals, progress, unit, thisWeek }: GoalProgre
     );
   }
 
+  const showPace =
+    progress?.onTrack !== null && progress?.onTrack !== undefined && !!goals?.targetDate;
+
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
+    <Card className="flex flex-col">
+      <CardHeader className="flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2">
-          <Target size={16} className="text-muted" aria-hidden />
+          <Target size={15} className="text-faint" aria-hidden />
           Goals
         </CardTitle>
-        {progress?.onTrack !== null && progress?.onTrack !== undefined && goals?.targetDate && (
+        {showPace && (
           <span
-            className="text-xs rounded-full px-2 py-0.5"
-            style={{
-              color: progress.onTrack ? 'var(--accent)' : 'var(--warn)',
-              backgroundColor: progress.onTrack ? 'var(--accent-25)' : 'transparent',
-              border: progress.onTrack ? 'none' : '1px solid var(--warn)',
-            }}
+            className="rounded-full px-2.5 py-1 text-[11px] font-medium"
+            style={
+              progress.onTrack
+                ? { color: 'var(--accent)', backgroundColor: 'var(--accent-wash)' }
+                : { color: 'var(--warn)', backgroundColor: 'color-mix(in srgb, var(--warn) 12%, transparent)' }
+            }
           >
             {progress.onTrack ? 'On pace' : 'Behind pace'}
           </span>
         )}
       </CardHeader>
 
-      <CardContent className="space-y-4">
+      <CardContent className="flex-1 space-y-4">
         {progress && (
-          <div className="space-y-2">
-            <div className="flex items-baseline justify-between">
-              <span className="text-sm text-text">
-                {progress.reached ? (
-                  <span className="text-accent font-medium">Goal reached 🎉</span>
-                ) : (
-                  <>
-                    <span className="tabular-nums font-medium">{round1(progress.remaining)}</span>{' '}
-                    <span className="text-muted">{unit} to go</span>
-                  </>
-                )}
-              </span>
-              <span className="text-xs text-muted tabular-nums">
-                {Math.round(progress.percent)}%
-              </span>
+          <div>
+            <div className="flex items-baseline justify-between gap-3">
+              {progress.reached ? (
+                <span className="font-display text-[17px] font-semibold text-accent">
+                  Goal reached
+                </span>
+              ) : (
+                <span className="flex items-baseline gap-1.5">
+                  <span className="stat text-[26px] leading-none font-semibold text-text">
+                    {round1(progress.remaining)}
+                  </span>
+                  <span className="text-[13px] text-muted">{unit} to go</span>
+                </span>
+              )}
+              <span className="stat text-xs text-muted">{Math.round(progress.percent)}%</span>
             </div>
 
-            <div className="relative h-2.5 rounded-full bg-track overflow-hidden">
-              <div
-                className="h-full rounded-full bg-accent transition-[width] duration-500"
-                style={{ width: `${progress.percent}%` }}
-              />
+            <Meter
+              value={progress.percent}
+              max={100}
+              size={8}
+              ariaLabel="Weight goal progress"
+              className="mt-3"
+            />
+
+            <div className="mt-2.5 grid grid-cols-3">
+              <Milestone value={progress.startWeight} unit={unit} label="Start" align="left" />
+              <Milestone value={progress.currentWeight} unit={unit} label="Now" align="center" strong />
+              <Milestone value={progress.targetWeight} unit={unit} label="Goal" align="right" />
             </div>
 
-            <div className="flex justify-between text-xs text-muted tabular-nums">
-              <span>{round1(progress.startWeight)} {unit}</span>
-              <span className="text-text">{round1(progress.currentWeight)} {unit}</span>
-              <span>{round1(progress.targetWeight)} {unit}</span>
-            </div>
-
-            <p className="text-xs text-muted flex items-center gap-1.5 flex-wrap">
+            <p className="mt-3 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
               {progress.ratePerWeek !== null && (
                 <>
                   {progress.ratePerWeek < 0 ? (
@@ -144,15 +176,13 @@ export function GoalProgressCard({ goals, progress, unit, thisWeek }: GoalProgre
                   ) : (
                     <TrendingUp size={13} aria-hidden />
                   )}
-                  <span className="tabular-nums">
+                  <span className="stat">
                     {progress.ratePerWeek > 0 ? '+' : ''}
                     {round1(progress.ratePerWeek)} {unit}/week
                   </span>
                 </>
               )}
-              {progress.projectedDayKey && (
-                <span>· on pace for {formatDate(progress.projectedDayKey)}</span>
-              )}
+              {progress.projectedDayKey && <span>· on pace for {formatDate(progress.projectedDayKey)}</span>}
               {goals?.targetDate && <span>· target {formatDate(goals.targetDate)}</span>}
               {!progress.reached && progress.ratePerWeek === null && (
                 <span>Keep weighing in to see your rate.</span>
@@ -165,9 +195,8 @@ export function GoalProgressCard({ goals, progress, unit, thisWeek }: GoalProgre
         )}
 
         {hasFrequencyGoals && (
-          <div className="space-y-2">
-            {progress && <div className="border-t border-border pt-3" />}
-            <p className="text-xs text-muted uppercase tracking-wide">This week</p>
+          <div className={progress ? 'space-y-2.5 border-t border-hairline pt-4' : 'space-y-2.5'}>
+            <p className={eyebrow}>This week</p>
             {goals?.liftsPerWeek ? (
               <FrequencyRow
                 label="Lift"

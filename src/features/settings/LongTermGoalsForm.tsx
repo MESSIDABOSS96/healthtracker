@@ -7,8 +7,9 @@
 import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Target } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { field, label as labelClass } from '@/components/ui/styles';
+import { SettingsCard } from './SettingsCard';
 import { getAllWeights, computeEma } from '@/services/weight.svc';
 import { getLongTermGoals, saveLongTermGoals } from '@/services/longTermGoals.svc';
 import { useGoals } from './hooks';
@@ -57,23 +58,18 @@ export function LongTermGoalsForm() {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const inputClass =
-    'h-11 w-full px-3 rounded-md bg-bg border border-border text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg';
+  const inputClass = `${field} stat`;
 
   return (
-    <Card className="bg-surface border border-border rounded-lg p-4 space-y-4">
-      <h2 className="text-base font-semibold text-text flex items-center gap-2">
-        <Target size={16} className="text-muted" aria-hidden />
-        Long-term goals
-      </h2>
-      <p className="text-sm text-muted">
-        What you&apos;re working toward. Progress against these shows on the Dashboard.
-      </p>
-
+    <SettingsCard
+      title="Long-term goals"
+      icon={Target}
+      description="What you're working toward. Progress against these shows on the Dashboard."
+    >
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label htmlFor="ltg-weight" className="block text-xs text-muted">
+          <div className="space-y-1.5">
+            <label htmlFor="ltg-weight" className={`block ${labelClass}`}>
               Goal weight ({unit})
             </label>
             <input
@@ -88,8 +84,8 @@ export function LongTermGoalsForm() {
               className={inputClass}
             />
           </div>
-          <div className="space-y-1">
-            <label htmlFor="ltg-date" className="block text-xs text-muted">
+          <div className="space-y-1.5">
+            <label htmlFor="ltg-date" className={`block ${labelClass}`}>
               Target date
             </label>
             <input
@@ -103,8 +99,8 @@ export function LongTermGoalsForm() {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label htmlFor="ltg-lifts" className="block text-xs text-muted">
+          <div className="space-y-1.5">
+            <label htmlFor="ltg-lifts" className={`block ${labelClass}`}>
               Lifts / week
             </label>
             <input
@@ -119,8 +115,8 @@ export function LongTermGoalsForm() {
               className={inputClass}
             />
           </div>
-          <div className="space-y-1">
-            <label htmlFor="ltg-cardio" className="block text-xs text-muted">
+          <div className="space-y-1.5">
+            <label htmlFor="ltg-cardio" className={`block ${labelClass}`}>
               Cardio / week
             </label>
             <input
@@ -138,8 +134,8 @@ export function LongTermGoalsForm() {
         </div>
 
         {stored?.startWeight != null && stored?.targetWeight != null && (
-          <p className="text-xs text-muted">
-            Measuring from {stored.startWeight} {unit}
+          <p className="text-xs text-faint">
+            Measuring from <span className="stat">{stored.startWeight} {unit}</span>
             {stored.startDayKey ? ` (set ${stored.startDayKey})` : ''}.
           </p>
         )}
@@ -148,9 +144,9 @@ export function LongTermGoalsForm() {
           <Button type="submit" variant="default" className="flex-1">
             Save goals
           </Button>
-          {saved && <span className="text-xs text-accent">Saved</span>}
+          {saved && <span className="text-xs font-medium text-accent">Saved</span>}
         </div>
       </form>
-    </Card>
+    </SettingsCard>
   );
 }

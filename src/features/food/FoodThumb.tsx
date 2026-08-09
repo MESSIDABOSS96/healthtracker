@@ -48,7 +48,7 @@ export function FoodThumb({ photoKey, size = 20, className }: FoodThumbProps) {
   if (!photoKey || !url) {
     return (
       <div
-        className={cn('rounded-full bg-surface border border-border', className)}
+        className={cn('rounded-full bg-surface-2 border border-hairline', className)}
         style={{ width: size, height: size }}
         aria-hidden
       />

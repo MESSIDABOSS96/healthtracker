@@ -3,12 +3,19 @@
 // otherwise) → editable confirm card → save. NOTHING saves without the
 // explicit confirm tap (LLM macro hallucination guard), and suspicious macro
 // math (4/4/9 drift) gets a visible warning, never a silent save.
+//
+// The idle state is deliberately shaped like a message composer — one field, a
+// round send button — because that's the promise of the feature: say what you
+// ate in your own words and it's handled. The confirm state replaces it in
+// place so the flow reads as one object changing, not two screens.
 
 import { useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { Loader2, Sparkles, TriangleAlert } from 'lucide-react';
+import { ArrowUp, Loader2, Sparkles, TriangleAlert } from 'lucide-react';
 import type { MealBucket } from '@/db/schema';
 import { Button } from '@/components/ui/button';
+import { Segmented } from '@/components/ui/segmented';
+import { field, focusRing, press } from '@/components/ui/styles';
 import { inferBucket } from '@/lib/dayKey';
 import { getApiKey } from '@/lib/apiKey';
 import {
@@ -63,6 +70,8 @@ function fromDraft(d: Draft): ParsedFood {
   };
 }
 
+const BUCKET_OPTIONS = BUCKETS.map(b => ({ value: b, label: b }));
+
 export function FoodEntry({ dayKey }: { dayKey: string }) {
   const reduceMotion = useReducedMotion();
   const [text, setText] = useState('');
@@ -105,91 +114,94 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
   const suspicious = draft ? isMacroMathSuspicious(fromDraft(draft)) : false;
 
   if (phase === 'confirm' && draft) {
-    const field = (
-      label: string,
+    const numField = (
+      labelText: string,
       key: keyof Draft,
       opts: { text?: boolean; span?: string } = {},
     ) => (
       <label className={cn('block', opts.span)}>
-        <span className="block text-xs text-muted mb-1">{label}</span>
+        <span className="mb-1.5 block text-xs font-medium text-muted">{labelText}</span>
         <input
           type={opts.text ? 'text' : 'number'}
           inputMode={opts.text ? 'text' : 'decimal'}
           step="0.1"
           value={(draft[key] as string) ?? ''}
           onChange={e => setDraft({ ...draft, [key]: e.target.value })}
-          className="w-full h-11 px-3 rounded-md bg-bg border border-border text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+          className={cn(field, !opts.text && 'stat')}
         />
       </label>
     );
 
     return (
       <motion.div
-        initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+        initial={reduceMotion ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-        className="space-y-3"
+        transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+        className="rounded-lg border border-hairline bg-surface shadow-raised p-4 space-y-4"
       >
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-medium text-text">Check before saving</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="font-display text-[15px] font-semibold tracking-[-0.015em] text-text">
+            Check before saving
+          </p>
           {draft.source === 'ai' && (
-            <span className="flex items-center gap-1 text-xs text-muted">
-              <Sparkles size={12} aria-hidden /> AI parsed
+            <span className="flex shrink-0 items-center gap-1 rounded-full bg-accent-wash px-2 py-1 text-[11px] font-medium text-accent">
+              <Sparkles size={11} aria-hidden /> AI parsed
             </span>
           )}
         </div>
 
-        {draft.assumptions && (
-          <p className="text-xs text-muted italic">{draft.assumptions}</p>
-        )}
+        {draft.assumptions && <p className="text-xs leading-relaxed text-muted">{draft.assumptions}</p>}
+
         {suspicious && (
-          <p className="flex items-start gap-1.5 text-xs text-warn" role="alert">
-            <TriangleAlert size={14} className="shrink-0 mt-px" aria-hidden />
+          <p
+            className="flex items-start gap-2 rounded-sm border border-warn/30 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn"
+            role="alert"
+          >
+            <TriangleAlert size={14} className="mt-px shrink-0" aria-hidden />
             Calories don&apos;t match the macros — double-check these numbers.
           </p>
         )}
 
-        <div className="grid grid-cols-6 gap-2">
-          {field('Name', 'name', { text: true, span: 'col-span-4' })}
-          {field('Amount', 'quantity')}
-          {field('Unit', 'unit', { text: true })}
-          {field('Calories', 'calories', { span: 'col-span-3' })}
-          {field('Protein', 'proteinG')}
-          {field('Carbs', 'carbsG')}
-          {field('Fat', 'fatG')}
+        {/* Six columns: name and calories take the full row, amount/unit split
+            it, and the three macros sit in equal thirds. The old 4/1/1 top row
+            left "Unit" about 50px wide — too narrow to read "serving" in. */}
+        <div className="grid grid-cols-6 gap-2.5">
+          {numField('Name', 'name', { text: true, span: 'col-span-6' })}
+          {numField('Amount', 'quantity', { span: 'col-span-3' })}
+          {numField('Unit', 'unit', { text: true, span: 'col-span-3' })}
+          {numField('Calories', 'calories', { span: 'col-span-6' })}
+          {numField('Protein', 'proteinG', { span: 'col-span-2' })}
+          {numField('Carbs', 'carbsG', { span: 'col-span-2' })}
+          {numField('Fat', 'fatG', { span: 'col-span-2' })}
         </div>
 
-        <div role="radiogroup" aria-label="Meal" className="flex gap-2">
-          {BUCKETS.map(b => (
-            <button
-              key={b}
-              type="button"
-              role="radio"
-              aria-checked={bucket === b}
-              onClick={() => setBucket(b)}
-              className={cn(
-                'h-10 flex-1 rounded-md border text-xs capitalize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
-                bucket === b
-                  ? 'bg-bg border-accent text-accent'
-                  : 'bg-bg border-border text-text hover:bg-border/40',
-              )}
-            >
-              {b}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          value={bucket}
+          onChange={setBucket}
+          options={BUCKET_OPTIONS}
+          ariaLabel="Meal"
+          itemClassName="capitalize"
+        />
 
-        <div className="flex gap-2 justify-end">
-          <Button type="button" variant="ghost" onClick={handleCancel}>
+        <div className="flex gap-2">
+          <Button type="button" variant="ghost" className="flex-1" onClick={handleCancel}>
             Cancel
           </Button>
-          <Button type="button" variant="default" onClick={handleSave} disabled={!draft.name.trim()}>
+          <Button
+            type="button"
+            variant="default"
+            className="flex-1"
+            onClick={handleSave}
+            disabled={!draft.name.trim()}
+          >
             Log it
           </Button>
         </div>
       </motion.div>
     );
   }
+
+  const canSubmit = !!text.trim() && phase !== 'parsing';
 
   return (
     <div className="space-y-2">
@@ -198,33 +210,52 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
           e.preventDefault();
           handleParse();
         }}
-        className="flex gap-2"
+        className={cn(
+          'flex items-center gap-2 rounded-full border border-hairline bg-surface p-1.5 pl-5 shadow-card',
+          'transition-shadow duration-200 ease-out-soft focus-within:shadow-raised',
+        )}
       >
         <input
           type="text"
           value={text}
           onChange={e => setText(e.target.value)}
-          placeholder={hasKey ? '200g chicken, 31g protein per 100g…' : 'chicken 200g 31p 0c 4f /100g'}
+          placeholder={hasKey ? 'What did you eat?' : 'chicken 200g 31p 0c 4f'}
           aria-label="Describe what you ate"
-          className="flex-1 h-11 px-3 rounded-md bg-bg border border-border text-text placeholder:text-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+          className="h-10 min-w-0 flex-1 bg-transparent text-[15px] text-text placeholder:text-faint focus:outline-none"
         />
-        <Button type="submit" variant="default" disabled={!text.trim() || phase === 'parsing'}>
-          {phase === 'parsing' ? (
-            <Loader2 size={16} className="animate-spin" aria-label="Parsing" />
-          ) : (
-            'Add'
+        <button
+          type="submit"
+          disabled={!canSubmit}
+          aria-label="Parse and add"
+          className={cn(
+            'grid h-10 w-10 shrink-0 place-items-center rounded-full',
+            'bg-accent-solid text-on-accent',
+            'disabled:opacity-30',
+            press,
+            // after `press` — see the note in button.tsx on transition merging
+            'transition-[opacity,transform] duration-150 ease-out-soft',
+            focusRing,
           )}
-        </Button>
+        >
+          {phase === 'parsing' ? (
+            <Loader2 size={17} className="animate-spin" aria-hidden />
+          ) : (
+            <ArrowUp size={18} strokeWidth={2.4} aria-hidden />
+          )}
+        </button>
       </form>
+
       {error && (
-        <p className="text-xs text-warn" role="alert">
+        <p className="px-1 text-xs text-danger" role="alert">
           {error}
         </p>
       )}
+
       {!hasKey && (
-        <p className="text-xs text-muted">
-          Offline format: <span className="tabular-nums">name 150g 31p 0c 4f</span> (add /100g if
-          facts are per 100g). Add an API key in Settings for freeform entry.
+        <p className="px-1 text-xs leading-relaxed text-faint">
+          Offline format: <span className="stat text-muted">name 150g 31p 0c 4f</span> — add{' '}
+          <span className="stat text-muted">/100g</span> if the facts are per 100g. Add an API key
+          in Settings for freeform entry.
         </p>
       )}
     </div>
