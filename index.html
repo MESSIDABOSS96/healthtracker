@@ -10,7 +10,17 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- NOT black-translucent. That style is supposed to hand the web app the
+         whole screen and let it draw under the status bar; what iOS actually
+         does is size the web view to (screen − status bar) and then place it at
+         y=0 anyway. The app ends up shifted up under the clock with a dead strip
+         of exactly one status bar left over at the bottom — measured at ~58pt,
+         below the tab bar, showing the page canvas past the end of its own
+         background. Nothing in CSS can reach it: the viewport genuinely stops
+         there, which is why three rounds of shell-height fixes changed nothing.
+         `default` lays the web view out below the status bar and down to the
+         bottom of the screen, which is the whole ask. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="VZN" />
     <!-- Both declared: browsers auto-probe /favicon.ico, but naming it lets the
          32px and 48px frames inside be picked for tabs and bookmarks instead of
