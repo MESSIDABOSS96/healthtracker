@@ -115,7 +115,47 @@ async function initApp(): Promise<void> {
 
   // Step 8 — SW registration via vite-plugin-pwa virtual module. autoUpdate per D-09.
   // immediate: true registers as soon as the page loads (no idle delay).
-  registerSW({ immediate: true });
+  //
+  // `autoUpdate` on its own installs the new worker and stops there: the page
+  // that triggered the install keeps running the assets it already loaded, and
+  // only some LATER launch serves the new build. On a phone that is close to
+  // never. An installed iOS web app is resumed from the app switcher far more
+  // often than it is launched cold, and a resume re-runs nothing — so a fix can
+  // sit installed and unseen indefinitely, which is exactly what happened with
+  // the standalone shell fix: three builds shipped and the phone ran none.
+  //
+  // The two additions below close that gap.
+  registerSW({
+    immediate: true,
+    onRegisteredSW(_swUrl, registration) {
+      if (!registration) return;
+      // A resumed app never re-runs this module, so ask on every return to the
+      // foreground instead. `update()` is a conditional request — when nothing
+      // changed it costs one 304 and installs nothing.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') void registration.update();
+      });
+    },
+  });
+
+  // The worker ships skipWaiting + clientsClaim (generateSW's autoUpdate
+  // defaults), so a new one takes over this page the moment it activates —
+  // while the DOM still holds the old build's HTML, CSS and JS. Reloading on
+  // that handover is what turns "installed" into "running".
+  //
+  // Guarded on there having BEEN a controller: the first-ever registration also
+  // fires this, and reloading there would be a pointless refresh on first open.
+  // `reloading` guards the reload itself, since a reload that races a second
+  // activation would otherwise loop.
+  if ('serviceWorker' in navigator) {
+    let reloading = false;
+    const hadController = navigator.serviceWorker.controller !== null;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloading) return;
+      reloading = true;
+      window.location.reload();
+    });
+  }
 }
 
 void initApp();
