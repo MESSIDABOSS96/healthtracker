@@ -100,6 +100,18 @@ export interface MealEntry {
   id: string; // uuid
   dayKey: string; // YYYY-MM-DD (local) — MUST come from lib/dayKey.ts
   foodId: string; // FK → Food.id
+  /**
+   * The food's name as it was at log time, so an entry can still say what it
+   * was after its library row is gone.
+   *
+   * The totals beside it are already denormalized for the same reason day
+   * sums never join; the label was the one part still chasing a foreign key,
+   * which made deleting a food silently turn every past log of it into a "—"
+   * row whose calories kept counting. Entries logged before this field
+   * existed get it backfilled at delete time. The library row stays the
+   * source of truth while it exists — this is a fallback, not a cache.
+   */
+  foodName?: string;
   servings: number;
   bucket: MealBucket;
   loggedAt: number;

@@ -104,9 +104,31 @@ export async function hideFoodFromChips(id: string): Promise<void> {
   await db.foods.update(id, { hiddenAt: Date.now() });
 }
 
+/**
+ * Remove a food from the library for good.
+ *
+ * Logged meal entries are deliberately NOT cascaded. Their macro totals are
+ * denormalized, so they remain arithmetically correct on their own, and
+ * deleting them would rewrite finished days — a tidy-up in Settings must never
+ * silently change what a past day's ring said. What those entries did depend on
+ * the library row for was their NAME, so it's stamped onto every one of them
+ * first; entries logged before `foodName` existed are backfilled by this pass.
+ *
+ * The photo is dropped before the row, in that order: a failed OPFS delete
+ * leaves an orphaned blob (recoverable, invisible), while the reverse leaves a
+ * row pointing at a file that's gone.
+ */
 export async function deleteFood(id: string): Promise<void> {
   const food = await db.foods.get(id);
   if (!food) return;
+
+  await db.mealEntries
+    .where('foodId')
+    .equals(id)
+    .modify(entry => {
+      if (!entry.foodName) entry.foodName = food.name;
+    });
+
   if (food.photoKey) {
     try {
       await deletePhoto(food.photoKey);
@@ -115,6 +137,39 @@ export async function deleteFood(id: string): Promise<void> {
     }
   }
   await db.foods.delete(id);
+}
+
+/**
+ * Edit a library food's per-serving facts.
+ *
+ * Past entries keep the numbers they were logged with. Their computed totals
+ * are already denormalized, and re-deriving them here would let one correction
+ * in Settings quietly restate weeks of finished days — including days whose
+ * closure ring has already been earned. The fix applies from the next log on;
+ * a single wrong entry is corrected on the entry itself.
+ */
+export async function updateFood(
+  id: string,
+  patch: Partial<Pick<Food, 'name' | 'calories' | 'proteinG' | 'carbsG' | 'fatG'>>,
+): Promise<void> {
+  const next: Partial<Food> = { ...patch };
+  if (patch.name !== undefined) {
+    const trimmed = patch.name.trim();
+    if (!trimmed) return;
+    next.name = trimmed;
+    // The dedupe key is derived, never typed — letting it drift from the name
+    // would strand the row: the auto-library would stop matching it and start a
+    // duplicate on the next log.
+    next.normalizedName = normalizeFoodName(trimmed);
+  }
+  await db.foods.update(id, next);
+}
+
+/** Undo a chip dismissal — see hideFoodFromChips. */
+export async function unhideFoodInChips(id: string): Promise<void> {
+  await db.foods.where('id').equals(id).modify(f => {
+    delete f.hiddenAt;
+  });
 }
 
 /** Substring search, case-insensitive, ordered by name. */

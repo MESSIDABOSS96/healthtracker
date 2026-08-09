@@ -10,6 +10,7 @@ import { AppearanceCard } from '@/features/settings/AppearanceCard';
 import { ApiKeyCard } from '@/features/settings/ApiKeyCard';
 import { ExportCard } from '@/features/settings/ExportCard';
 import { ImportCard } from '@/features/settings/ImportCard';
+import { FoodLibraryCard } from '@/features/settings/FoodLibraryCard';
 
 function isAndroid(): boolean {
   return /android/i.test(navigator.userAgent);
@@ -88,6 +89,12 @@ export function SettingsScreen() {
         <ExportCard />
 
         <ImportCard />
+
+        {/* Spans the row: it's a list, and a list in a half-width column gets
+            truncated names next to a short card stretched to match its height.
+            Last because it's a maintenance surface — you come here to fix a
+            wrong row, not to change a setting. */}
+        <FoodLibraryCard className="lg:col-span-2" />
       </div>
 
       <p className="stat mt-8 text-center text-xs text-faint">

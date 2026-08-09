@@ -137,7 +137,7 @@ export function MealEntryRow({ entry, food }: MealEntryRowProps) {
           )}
         >
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[14px] text-text">{food?.name ?? '—'}</span>
+            <span className="block truncate text-[14px] text-text">{food?.name ?? entry.foodName ?? '—'}</span>
             <span className="stat mt-0.5 block text-[11.5px] text-faint">
               {entry.servings} × {food?.servingLabel ?? 'serving'}
             </span>
@@ -150,7 +150,7 @@ export function MealEntryRow({ entry, food }: MealEntryRowProps) {
         <button
           type="button"
           onClick={() => void handleDelete()}
-          aria-label={`Delete ${food?.name ?? 'entry'}`}
+          aria-label={`Delete ${food?.name ?? entry.foodName ?? 'entry'}`}
           className={cn(
             'mr-1 ml-1 hidden h-7 w-7 shrink-0 place-items-center rounded-full text-faint',
             '[@media(hover:hover)]:grid',
@@ -192,7 +192,7 @@ export function MealEntryRow({ entry, food }: MealEntryRowProps) {
 
   return (
     <li className="py-3 space-y-3.5">
-      <p className="text-[14px] font-medium text-text">{food?.name ?? '—'}</p>
+      <p className="text-[14px] font-medium text-text">{food?.name ?? entry.foodName ?? '—'}</p>
 
       <div className="flex items-end gap-3">
         <label htmlFor={`servings-${entry.id}`} className="block">

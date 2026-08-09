@@ -27,6 +27,7 @@ export async function logMeal(params: {
     id: crypto.randomUUID(),
     dayKey,
     foodId: food.id,
+    foodName: food.name,
     servings,
     bucket,
     loggedAt: Date.now(),
