@@ -16,8 +16,14 @@
 
 export type FoodUnit = 'g' | 'ml' | 'count';
 
-/** Which amount the nutrition numbers in the text describe. */
-export type FactBasis = 'total' | 'per100' | 'perServing';
+/**
+ * Which amount the nutrition numbers in the text describe.
+ *
+ * `perWeight` means "these numbers describe `basisAmount` grams/ml, and I ate
+ * `quantity`". 100 is just the common case — a packet that states its figures
+ * per 114g portion is the same shape with a different divisor.
+ */
+export type FactBasis = 'total' | 'perWeight' | 'perServing';
 
 export interface FoodQuery {
   /** Whatever text was left after the numbers were consumed. */
@@ -29,6 +35,8 @@ export interface FoodQuery {
   carbsG?: number;
   fatG?: number;
   basis: FactBasis;
+  /** For `perWeight`: the grams/ml the facts describe. Defaults to 100. */
+  basisAmount?: number;
   /**
    * "I had N of these." Multiplies the whole entry — amount and macros alike —
    * so a portion you've already described once doesn't have to be re-typed or
@@ -67,15 +75,23 @@ export function parseFoodQuery(input: string): FoodQuery {
   };
 
   // --- 1. Basis markers -----------------------------------------------------
-  // What amount do the numbers in this text describe? Per 100g wins the race
-  // because "per 100g" would otherwise also satisfy the per-serving pattern.
+  // What amount do the numbers in this text describe? The weight form is tried
+  // first: "per 100g" would otherwise also satisfy the per-serving pattern.
   //
   // The serving nouns are an explicit list rather than `per <anything>`: a
   // catch-all would read "chicken per pound" or a food literally named "per"
   // as a basis marker, and getting this wrong silently rescales every macro.
   let basis: FactBasis = 'total';
-  if (take(/(?:\/|\bper\s*)100\s*(?:g|ml|grams?)\b/i)) basis = 'per100';
-  else if (
+  let basisAmount: number | undefined;
+
+  // Any weight, not just 100 — a label stating its figures per 114g portion is
+  // the same instruction as per 100g, and hardcoding 100 silently dropped the
+  // "/114g" and treated the macros as the whole entry's total.
+  const perWeight = take(/(?:\/|\bper\s*)(\d+(?:\.\d+)?)\s*(?:g|ml|grams?)\b/i);
+  if (perWeight) {
+    basis = 'perWeight';
+    basisAmount = parseFloat(perWeight[1]);
+  } else if (
     take(
       /(?:\/|\bper\s*)(?:servings?|portions?|bars?|slices?|scoops?|pieces?|items?|packs?|packets?|containers?|bottles?|cans?|pots?|tubs?|sachets?|squares?|cookies?|eggs?)\b/i,
     )
@@ -178,7 +194,29 @@ export function parseFoodQuery(input: string): FoodQuery {
   if (carbsG === undefined) carbsG = num(take(/(\d+(?:\.\d+)?)\s*c\b/i)?.[1]);
   if (fatG === undefined) fatG = num(take(/(\d+(?:\.\d+)?)\s*f\b/i)?.[1]);
 
-  // --- 5. Bare leading count ("2 eggs") ------------------------------------
+  // --- 5. Serving size stated as a bare second weight ----------------------
+  // "salmon 183g 25p 15c 10f 114g" — 183g eaten, macros describing a 114g
+  // portion. Runs only after every macro has been claimed, so the leftover
+  // genuinely is a second weight rather than a value some label wanted.
+  //
+  // It also requires facts to scale and a first weight to scale FROM. Without
+  // this the trailing number fell through to the name ("salmon 114g") and the
+  // macros were logged as the whole entry's total — a silent 38% under-count
+  // on the example above, which is exactly the failure mode worth spending a
+  // rule on.
+  const hasAnyFact =
+    calories !== undefined || proteinG !== undefined || carbsG !== undefined || fatG !== undefined;
+  if (basis === 'total' && hasAnyFact && quantity !== undefined && (unit === 'g' || unit === 'ml')) {
+    const sameUnit = unit === 'g' ? 'g|grams?' : 'ml';
+    const second = take(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(?:${sameUnit})\\b`, 'i'));
+    const amount = num(second?.[1]);
+    if (amount !== undefined && amount > 0) {
+      basis = 'perWeight';
+      basisAmount = amount;
+    }
+  }
+
+  // --- 6. Bare leading count ("2 eggs") ------------------------------------
   // Last, so a leading number that was really a macro value has already been
   // claimed by its label. Guarded against "2% milk".
   if (quantity === undefined) {
@@ -189,7 +227,7 @@ export function parseFoodQuery(input: string): FoodQuery {
     }
   }
 
-  // --- 6. Multiplier ("… 2x", "… x2") --------------------------------------
+  // --- 7. Multiplier ("… 2x", "… x2") --------------------------------------
   // Deliberately LAST, and this ordering is the whole trick. `2x` is ambiguous:
   // in "banana 2x" it's the amount, in "chicken 200g 31p 0c 4f 2x" it means two
   // of that 200g portion. Running after the quantity step resolves it by what's
@@ -213,7 +251,7 @@ export function parseFoodQuery(input: string): FoodQuery {
     quantity = Math.round(quantity * multiplier * 10) / 10;
   }
 
-  // --- 7. Name = the leftovers ---------------------------------------------
+  // --- 8. Name = the leftovers ---------------------------------------------
   const name = rest
     .replace(/[@,;:]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -234,6 +272,7 @@ export function parseFoodQuery(input: string): FoodQuery {
     carbsG,
     fatG,
     basis,
+    basisAmount,
     multiplier,
     hasFacts,
     raw,
@@ -242,7 +281,8 @@ export function parseFoodQuery(input: string): FoodQuery {
 
 /**
  * How many "basis units" of the food were eaten, given the basis its numbers
- * are written against. per-100g facts with a 250g quantity → 2.5.
+ * are written against. Per-100g facts with a 250g quantity → 2.5; per-114g
+ * facts with a 183g quantity → 1.605.
  *
  * The multiplier is folded in once and only once. Where a quantity exists it is
  * ALREADY multiplied (parseFoodQuery does that so the displayed amount reads as
@@ -252,8 +292,9 @@ export function parseFoodQuery(input: string): FoodQuery {
 export function basisScale(q: FoodQuery): number {
   const multiplier = q.multiplier ?? 1;
 
-  if (q.basis === 'per100') {
-    if ((q.unit === 'g' || q.unit === 'ml') && q.quantity) return q.quantity / 100;
+  if (q.basis === 'perWeight') {
+    const per = q.basisAmount && q.basisAmount > 0 ? q.basisAmount : 100;
+    if ((q.unit === 'g' || q.unit === 'ml') && q.quantity) return q.quantity / per;
     return multiplier;
   }
   if (q.basis === 'perServing') return q.quantity ?? multiplier;

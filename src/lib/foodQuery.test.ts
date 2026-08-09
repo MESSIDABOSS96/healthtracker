@@ -34,7 +34,7 @@ test('short-form macros with per-100g basis', () => {
     proteinG: 31,
     carbsG: 0,
     fatG: 4,
-    basis: 'per100',
+    basis: 'perWeight',
     hasFacts: true,
   });
   assert.equal(basisScale(parseFoodQuery('chicken 200g 31p 0c 4f /100g')), 2);
@@ -47,7 +47,7 @@ test('calories welded to their label', () => {
     quantity: 28,
     calories: 579,
     proteinG: 21.2,
-    basis: 'per100',
+    basis: 'perWeight',
   });
 });
 
@@ -69,7 +69,7 @@ test('label-before-number phrasing', () => {
     proteinG: 31,
     carbsG: 0,
     fatG: 3.6,
-    basis: 'per100',
+    basis: 'perWeight',
   });
 });
 
@@ -174,7 +174,7 @@ test('the multiplier is folded in exactly once with per-100g facts', () => {
   // 200g × 2 = 400g of a food whose facts are per 100g → scale 4, not 8.
   const q = parseFoodQuery('chicken 200g 31p 0c 4f /100g 2x');
   assert.equal(q.quantity, 400);
-  assert.equal(q.basis, 'per100');
+  assert.equal(q.basis, 'perWeight');
   assert.equal(basisScale(q), 4);
 });
 
@@ -212,7 +212,60 @@ test('per-serving facts combine with a multiplier', () => {
 test('per 100g still beats the per-serving patterns', () => {
   // "per 100g" also matches nothing in the serving list, but the ordering
   // matters if that list ever grows a unit-like word.
-  assert.equal(parseFoodQuery('chicken 200g 31p 0c 4f per 100g').basis, 'per100');
+  assert.equal(parseFoodQuery('chicken 200g 31p 0c 4f per 100g').basis, 'perWeight');
+});
+
+// --- serving size as a second weight ---------------------------------------
+// The label states its figures for a 114g portion; you ate 183g. Before this
+// worked, the trailing 114g fell into the NAME ("salmon 114g") and the macros
+// logged as the total for 183g — a silent 38% under-count.
+
+test('a bare second weight is the serving the macros describe', () => {
+  const q = parseFoodQuery('salmon 183g 25p 15c 10f 114g');
+  assert.equal(q.name, 'salmon');
+  assert.equal(q.quantity, 183);
+  assert.equal(q.unit, 'g');
+  assert.equal(q.basis, 'perWeight');
+  assert.equal(q.basisAmount, 114);
+  assert.equal(basisScale(q).toFixed(3), '1.605');
+  // 25g protein per 114g → 40.1g for 183g eaten.
+  assert.equal((25 * basisScale(q)).toFixed(1), '40.1');
+});
+
+test('the explicit per-N forms mean the same thing', () => {
+  for (const phrase of ['per 114g', '/114g', 'per114g']) {
+    const q = parseFoodQuery(`salmon 183g 25p 15c 10f ${phrase}`);
+    assert.equal(q.basis, 'perWeight', phrase);
+    assert.equal(q.basisAmount, 114, phrase);
+    assert.equal(q.name, 'salmon', phrase);
+  }
+});
+
+test('per 100g is just the common case of the same rule', () => {
+  const q = parseFoodQuery('chicken 200g 31p 0c 4f /100g');
+  assert.equal(q.basisAmount, 100);
+  assert.equal(basisScale(q), 2);
+});
+
+test('a second weight needs facts to scale and a first weight to scale from', () => {
+  // No macros — nothing to rescale, so the second weight must not hijack the basis.
+  assert.equal(parseFoodQuery('salmon 183g 114g').basis, 'total');
+  // Counts have no weight basis to divide by.
+  assert.equal(parseFoodQuery('2 eggs 140cal 50g').basis, 'total');
+});
+
+test('a second weight only binds a matching unit', () => {
+  // ml eaten, g stated — not the same measure, so no basis is inferred.
+  const q = parseFoodQuery('shake 300ml 25p 10c 3f 40g');
+  assert.equal(q.basis, 'total');
+});
+
+test('serving size combines with a multiplier', () => {
+  // Two 183g portions of a food whose facts describe 114g.
+  const q = parseFoodQuery('salmon 183g 25p 15c 10f 114g x2');
+  assert.equal(q.quantity, 366);
+  assert.equal(q.basisAmount, 114);
+  assert.equal(basisScale(q).toFixed(3), '3.211');
 });
 
 test('label words inside a food name claim no numbers', () => {
