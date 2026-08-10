@@ -20,7 +20,7 @@
 // Per UI-SPEC §"Destructive confirmations: NONE" — meal-entry delete is silent.
 // Keyboard: Escape collapses without commit; Enter in any field commits Save.
 
-import { useState, useEffect, type KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, type KeyboardEvent } from 'react';
 import { Trash2 } from 'lucide-react';
 import type { Food, MealBucket, MealEntry } from '@/db/schema';
 import { Button } from '@/components/ui/button';
@@ -58,14 +58,21 @@ interface MealEntryRowProps {
 
 export function MealEntryRow({ entry, food }: MealEntryRowProps) {
   const [editing, setEditing] = useState(false);
-  const [servings, setServings] = useState<number>(entry.servings);
+  // Held as text, not as a number. A number field the user is halfway through
+  // retyping is legitimately empty for a keystroke or two, and parsing that to
+  // 0 as it goes is what broke the rescale below.
+  const [servingsText, setServingsText] = useState<string>(() => String(entry.servings));
   const [bucket, setBucket] = useState<MealBucket>(entry.bucket);
   const [totals, setTotals] = useState<Totals>(() => totalsOf(entry));
+  /** The last amount the macros on screen actually correspond to. */
+  const scaledFrom = useRef<number>(entry.servings);
+  const servings = parseFloat(servingsText);
 
   // Re-sync local edit state if the underlying entry changes while the row
   // is open (e.g. another tab updates it — unusual for single-user PWA, but cheap).
   useEffect(() => {
-    setServings(entry.servings);
+    setServingsText(String(entry.servings));
+    scaledFrom.current = entry.servings;
     setBucket(entry.bucket);
     setTotals(totalsOf(entry));
   }, [entry.servings, entry.bucket, entry.computedCalories]);
@@ -78,12 +85,24 @@ export function MealEntryRow({ entry, food }: MealEntryRowProps) {
    * the food row, which is what preserves a correction: an entry hand-fixed to
    * 358 kcal for 5 eggs becomes 429.6 for 6, not the library's 378. Recomputing
    * would quietly discard the edit the moment the amount was nudged.
+   *
+   * What it scales FROM is tracked separately from what's in the box, and that
+   * distinction is the whole fix. The ratio used to be next/previous-box-value,
+   * so clearing the field to retype it put a 0 in the middle of the sequence:
+   * the guard against dividing by it then refused every later keystroke too,
+   * and the entry saved as "2 servings" carrying the macros for one. The anchor
+   * only ever moves to a value that could be a real amount, so a box passing
+   * through "" or "0" on its way to "2" rescales from 1, exactly as if the user
+   * had selected the text and overtyped it.
    */
-  const handleServingsChange = (next: number) => {
-    const prev = servings;
-    setServings(next);
-    if (!(prev > 0) || !(next > 0)) return;
-    const factor = next / prev;
+  const handleServingsChange = (next: string) => {
+    setServingsText(next);
+    const value = parseFloat(next);
+    if (!(value > 0)) return;
+    const from = scaledFrom.current;
+    scaledFrom.current = value;
+    if (!(from > 0) || from === value) return;
+    const factor = value / from;
     setTotals(t => ({
       calories: String(round1(num(t.calories) * factor)),
       proteinG: String(round1(num(t.proteinG) * factor)),
@@ -114,7 +133,8 @@ export function MealEntryRow({ entry, food }: MealEntryRowProps) {
   };
 
   const handleCancel = () => {
-    setServings(entry.servings);
+    setServingsText(String(entry.servings));
+    scaledFrom.current = entry.servings;
     setBucket(entry.bucket);
     setTotals(totalsOf(entry));
     setEditing(false);
@@ -202,8 +222,8 @@ export function MealEntryRow({ entry, food }: MealEntryRowProps) {
             type="number"
             inputMode="decimal"
             step="0.1"
-            value={servings}
-            onChange={e => handleServingsChange(parseFloat(e.target.value) || 0)}
+            value={servingsText}
+            onChange={e => handleServingsChange(e.target.value)}
             onKeyDown={commitKeys}
             aria-label="Servings"
             className={cn(field, 'stat w-24')}
@@ -238,7 +258,16 @@ export function MealEntryRow({ entry, food }: MealEntryRowProps) {
         <Button type="button" variant="ghost" size="sm" onClick={handleCancel}>
           Cancel
         </Button>
-        <Button type="button" variant="default" size="sm" onClick={() => void handleSave()}>
+        {/* Disabled rather than silently no-op: handleSave already refuses an
+            empty or zero amount, and a Save button that does nothing when
+            tapped reads as the app being broken. */}
+        <Button
+          type="button"
+          variant="default"
+          size="sm"
+          onClick={() => void handleSave()}
+          disabled={!(servings > 0)}
+        >
           Save
         </Button>
       </div>
