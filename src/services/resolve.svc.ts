@@ -22,6 +22,8 @@ import { db } from '@/db/db';
 import type { Food } from '@/db/schema';
 import { normalizeFoodName } from '@/lib/normalizeFoodName';
 import { basisScale, parseFoodQuery, type FoodQuery } from '@/lib/foodQuery';
+import { libraryServings } from '@/lib/servings';
+import { stemWords } from '@/lib/stem';
 import { getLastServingsForFood } from './meals.svc';
 import { searchFoodTable, type TableFood } from './foodTable.svc';
 import { parseFood, type ParsedFood } from './parse.svc';
@@ -89,6 +91,11 @@ function fromCalculator(q: FoodQuery): Resolution {
  * finds both "Chicken breast, Tesco" and "Tesco chicken breast", and "tesco
  * chicken" narrows to the one.
  *
+ * Both sides go through the same stemmer the bundled table's search uses, so
+ * plurals stop deciding which tier answers. Before that, `egg` matched your own
+ * confirmed row and `eggs` fell through to the USDA table — same food, two
+ * different sets of numbers, one letter apart.
+ *
  * The old prefix-only match answered a different question. It could only find
  * names that STARTED with what you typed, which quietly failed the case this
  * tier exists for: you weigh two different chicken breasts once each, and from
@@ -105,12 +112,12 @@ function fromCalculator(q: FoodQuery): Resolution {
 async function fromLibrary(q: FoodQuery): Promise<Resolution[]> {
   const normalized = normalizeFoodName(q.name);
   if (!normalized) return [];
-  const queryTokens = normalized.split(' ').filter(Boolean);
+  const queryTokens = stemWords(normalized);
   if (!queryTokens.length) return [];
 
   const all = await db.foods.toArray();
   const foods = all.filter(f => {
-    const nameTokens = f.normalizedName.split(' ').filter(Boolean);
+    const nameTokens = stemWords(f.normalizedName);
     return queryTokens.every(qt => nameTokens.some(nt => nt.startsWith(qt)));
   });
   if (!foods.length) return [];
@@ -122,25 +129,24 @@ async function fromLibrary(q: FoodQuery): Promise<Resolution[]> {
     return exact || (b.usageCount ?? 0) - (a.usageCount ?? 0);
   });
 
-  return Promise.all(foods.slice(0, 5).map(food => toLibraryResolution(food, q)));
+  const resolutions = await Promise.all(foods.slice(0, 5).map(food => toLibraryResolution(food, q)));
+  // Nulls are foods that can't express the amount that was typed — see
+  // lib/servings.ts. Dropping them hands the question to the table tier rather
+  // than answering it with a number the user didn't ask for.
+  return resolutions.filter((r): r is Resolution => r !== null);
 }
 
-async function toLibraryResolution(food: Food, q: FoodQuery): Promise<Resolution> {
+async function toLibraryResolution(food: Food, q: FoodQuery): Promise<Resolution | null> {
   const servingQty = food.servingQty ?? 1;
   const servingUnit = food.servingUnit ?? 'count';
 
-  let servings: number;
-  if (q.quantity !== undefined && q.unit === servingUnit && servingQty > 0) {
-    servings = q.quantity / servingQty;
-  } else if (q.quantity !== undefined && q.unit === 'count' && servingUnit === 'count') {
-    servings = q.quantity;
-  } else {
-    // No amount typed — reuse whatever this food was logged as last time. Same
-    // semantics as tapping its quick-log chip. A bare multiplier scales that:
-    // "protein shake x2" is two of your usual shake.
-    servings = ((await getLastServingsForFood(food.id)) ?? 1) * (q.multiplier ?? 1);
-  }
-  if (!(servings > 0)) servings = 1;
+  // Fetched even when the typed amount answers on its own: it's a single
+  // indexed read against a personal-sized table, and threading a lazy getter
+  // through would buy microseconds at the cost of the rule being readable in
+  // one place.
+  const lastServings = await getLastServingsForFood(food.id);
+  const servings = libraryServings(q, { servingQty, servingUnit, lastServings });
+  if (servings === null) return null;
 
   return {
     tier: 'library',

@@ -13,6 +13,8 @@
 // along with the app (vite.config.ts globPatterns covers js, not json — that's
 // why the generator emits a .ts module rather than a .json asset).
 
+import { stemToken } from '@/lib/stem';
+
 export interface TableFood {
   /** USDA description, lightly cleaned. e.g. "Bananas, raw". */
   name: string;
@@ -40,24 +42,9 @@ interface IndexedFood extends TableFood {
 // Tokenizing
 // ---------------------------------------------------------------------------
 
-/**
- * Crude singularizer. The job here is only to make "banana" and "Bananas"
- * collide — not to be linguistically correct. Both the index and the query run
- * through it, so any consistent mangling works; it only has to avoid collapsing
- * genuinely different foods together.
- */
-function stem(token: string): string {
-  if (token.length <= 3) return token;
-  if (token.endsWith('ies')) return `${token.slice(0, -3)}y`;
-  if (token.endsWith('ses') || token.endsWith('xes') || token.endsWith('zes')) {
-    return token.slice(0, -2);
-  }
-  if (token.endsWith('ches') || token.endsWith('shes')) return token.slice(0, -2);
-  if (token.endsWith('s') && !token.endsWith('ss') && !token.endsWith('us')) {
-    return token.slice(0, -1);
-  }
-  return token;
-}
+// The singularizer moved to lib/stem.ts — unchanged, but now shared with the
+// resolver's library scan, which used to match unstemmed and so answered `egg`
+// and `eggs` from different tiers.
 
 /** Grammar and packaging words. They pad a name's length without saying
  *  anything about the food, and counting them would penalize USDA's wordier
@@ -105,7 +92,7 @@ function tokenize(text: string): string[] {
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .split(/\s+/)
     .filter(Boolean)
-    .map(stem)
+    .map(stemToken)
     // Bare numbers ("3.25% milkfat" → "3", "25") are noise for the same reason
     // stopwords are.
     .filter(t => t.length > 0 && !STOPWORDS.has(t) && !/^\d+$/.test(t));
