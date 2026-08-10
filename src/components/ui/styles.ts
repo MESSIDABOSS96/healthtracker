@@ -20,12 +20,14 @@ export const press =
  * fields read as recessed into the card instead of stacked on top of it.
  * 44px min height keeps every field a valid touch target.
  *
- * `min-w-0` is not decoration. `w-full` sets a width; it does not remove the
- * intrinsic MINIMUM one, and WebKit gives `input[type=date]` a minimum sized to
- * its rendered format ("Aug 30, 2026"). Wider than its column, the field simply
- * overflowed — off the card and off the screen. This is the same rule the
- * desktop grids carry as `lg:[&>*]:min-w-0`, applied one level lower, on the
- * control itself, because that is where the stubborn intrinsic width lives.
+ * `min-w-0` is the same rule the desktop grids carry as `lg:[&>*]:min-w-0`,
+ * applied one level lower — a field inside a grid column should shrink with it.
+ *
+ * It is NOT what fixes the target-date field, though an earlier pass here said
+ * so. That field overflowed because iOS renders `input[type=date]` as a themed
+ * button whose width the theme decides, so neither the width nor the min-width
+ * on this line was ever consulted. The fix lives in styles/index.css, where the
+ * appearance is turned off; see the note there.
  */
 export const field = [
   'h-11 w-full min-w-0 px-3.5 rounded-md',

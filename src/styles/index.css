@@ -203,6 +203,28 @@ input[type='number']::-webkit-inner-spin-button {
 }
 input[type='number'] { -moz-appearance: textfield; }
 
+/* iOS renders date inputs as a themed BUTTON control, not as a text field, and
+   the theme computes the control's width from its own chrome — the value text
+   plus room for affordances the phone never draws. WebKit uses that width in
+   preference to the one the page asked for, which is why `w-full` and a
+   `min-width: 0` both failed to contain the target-date field: neither of them
+   is a width the element was ever going to use. The field ran past its column,
+   past the card and off the right of the screen.
+
+   Turning the appearance off drops the control back to ordinary box sizing,
+   where `width: 100%` means what it says. The picker still opens on tap — this
+   removes the native STYLING, not the native control. The shadow value keeps
+   its alignment explicitly, because unthemed it would otherwise centre. */
+input[type='date'] {
+  -webkit-appearance: none;
+  appearance: none;
+  max-width: 100%;
+}
+input[type='date']::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+}
+
 /* Safe-area support for iPhone notch + home indicator (D-04) */
 .safe-area-top    { padding-top:    env(safe-area-inset-top); }
 .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
