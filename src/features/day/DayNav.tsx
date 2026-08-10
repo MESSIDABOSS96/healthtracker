@@ -7,8 +7,8 @@
 
 import { Link, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { addDays, keyToDate } from '@/lib/dayKey';
-import { dayPath } from '@/lib/dayRoutes';
+import { keyToDate } from '@/lib/dayKey';
+import { stepDayPath, type DayNavState } from '@/lib/dayRoutes';
 import { focusRing, press } from '@/components/ui/styles';
 import { cn } from '@/lib/utils';
 
@@ -30,10 +30,13 @@ export function DayNav({ dayKey, todayKey }: DayNavProps) {
     ...(date.getFullYear() !== keyToDate(todayKey).getFullYear() ? { year: 'numeric' } : {}),
   });
 
-  const step = (delta: number) => {
-    const next = addDays(dayKey, delta);
-    if (next > todayKey) return; // no logging the future
-    navigate(dayPath(next, todayKey));
+  // The arrows and the swipe gesture take the same route through stepDayPath,
+  // and both hand the direction to the arriving screen so it enters from the
+  // side it came from — an arrow tap and a drag should not land differently.
+  const step = (delta: -1 | 1) => {
+    const path = stepDayPath(dayKey, todayKey, delta);
+    if (!path) return; // no logging the future
+    navigate(path, { state: { dir: delta } satisfies DayNavState });
   };
 
   const arrow =
