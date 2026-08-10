@@ -1,5 +1,6 @@
 // src/features/settings/AppearanceCard.tsx
-// Theme preference: System (default) / Light / Dark. Applies immediately.
+// Theme preference: System / Light (default) / Dark. Applies immediately.
+// System is still offered — it is just no longer what you get by not choosing.
 
 import { useState } from 'react';
 import { Monitor, Moon, Palette, Sun } from 'lucide-react';

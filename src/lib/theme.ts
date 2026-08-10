@@ -1,8 +1,15 @@
 // src/lib/theme.ts
-// Theme preference: 'system' (default), 'light', or 'dark'. The resolved theme
+// Theme preference: 'light' (default), 'dark', or 'system'. The resolved theme
 // is applied as a `.dark` class on <html>, which swaps the token values in
 // styles/tokens.css. index.html runs the same logic inline before first paint —
 // keep the two in sync if the storage key or class ever changes.
+//
+// The default is light rather than system because the design HAS a first
+// impression and it is the daylight one: the palette is a sky, and someone
+// opening the app for the first time should meet it. Dark mode is the same sky
+// at night, and it stays one tap away — 'system' is still an option, it is just
+// no longer what you get by not choosing. Only the absence of a stored
+// preference is affected; anyone who has already chosen keeps their choice.
 
 import { THEME_KEY } from './storageKeys';
 
@@ -18,7 +25,7 @@ const SURFACE_COLOR: Record<'light' | 'dark', string> = {
 
 export function getThemePref(): ThemePref {
   const raw = localStorage.getItem(THEME_KEY);
-  return raw === 'light' || raw === 'dark' || raw === 'system' ? raw : 'system';
+  return raw === 'light' || raw === 'dark' || raw === 'system' ? raw : 'light';
 }
 
 export function systemPrefersDark(): boolean {
