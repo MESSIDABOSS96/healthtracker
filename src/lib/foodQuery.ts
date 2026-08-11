@@ -1,64 +1,101 @@
 // src/lib/foodQuery.ts
-// One structured read of whatever the user typed, shared by every tier of the
-// food resolver.
+// One structured read of whatever the user typed.
 //
-// The old design parsed the input twice with different grammars — once in the
-// local fallback, once implicitly by shipping the raw string to a language
-// model — which meant "chicken 200g 31p 0c 4f" (pure arithmetic) and "banana"
-// (a lookup) went down the same slow path. Splitting the read from the answer
-// lets the resolver route on what the text actually contains:
+// The grammar has exactly three parts, and every scenario the app supports is
+// some subset of them:
 //
-//   facts present            → arithmetic, no lookup needed        (tier 1)
-//   name + quantity only     → look the name up, scale by quantity (tier 0/2)
-//   neither                  → hand the whole string to the model  (tier 3)
+//   <name>  [facts]  [per <serving>]  [amount]
+//
+//   chipotle bowl 540cal 96p            a meal, facts for the whole thing
+//   welchs 80cal per packet             a snack, facts for one packet
+//   welchs 2                            …two of them, next time
+//   chicken breast 165cal 31p per 100g  a food measured by weight
+//   chicken breast 1.5                  …1.5 servings of it, next time
+//   chicken breast 150g                 …or say the weight and let it divide
+//
+// The unification that makes this small: FACTS ALWAYS DESCRIBE ONE SERVING, and
+// a serving is whatever you say it is — 100 g, one packet, or (by default) the
+// whole thing. There is no total-vs-per-amount mode, because a one-off meal is
+// just a food whose serving is "1" eaten once. The old parser carried a
+// three-valued `basis`, a `basisAmount` and a separate `multiplier` to express
+// the same idea, and the interactions between them were where it went wrong.
+//
+// THE ONE AMBIGUITY, AND ITS RULE. A weight in the text can mean two different
+// things — "the facts describe 100 g" or "I ate 150 g" — and nothing about the
+// number itself distinguishes them. The rule is:
+//
+//   facts present  → the first weight is what the facts DESCRIBE (the serving)
+//   facts absent   → the weight is how much you ATE
+//
+// which is exactly how the two are used in practice: you state a serving on the
+// day you first enter a food's label, and after that you only ever state
+// amounts. An explicit `per`/`/` marker always wins over this inference.
 //
 // Nothing here touches the network or the database. It is pure and synchronous.
 
 export type FoodUnit = 'g' | 'ml' | 'count';
 
-/**
- * Which amount the nutrition numbers in the text describe.
- *
- * `perWeight` means "these numbers describe `basisAmount` grams/ml, and I ate
- * `quantity`". 100 is just the common case — a packet that states its figures
- * per 114g portion is the same shape with a different divisor.
- */
-export type FactBasis = 'total' | 'perWeight' | 'perServing';
+/** A quantity with a unit. `count` means servings/items, not a weight. */
+export interface Amount {
+  value: number;
+  unit: FoodUnit;
+}
 
-export interface FoodQuery {
+export interface FoodInput {
   /** Whatever text was left after the numbers were consumed. */
   name: string;
-  quantity?: number;
-  unit?: FoodUnit;
-  calories?: number;
-  proteinG?: number;
-  carbsG?: number;
-  fatG?: number;
-  basis: FactBasis;
-  /** For `perWeight`: the grams/ml the facts describe. Defaults to 100. */
-  basisAmount?: number;
+  /** How much was eaten, if stated. Absent means one serving. */
+  amount?: Amount;
   /**
-   * "I had N of these." Multiplies the whole entry — amount and macros alike —
-   * so a portion you've already described once doesn't have to be re-typed or
-   * re-multiplied in your head. Absent means 1.
+   * What one serving is, if stated. Absent means the food's own serving (for a
+   * food already known) or "the whole thing" (for a new one).
    */
-  multiplier?: number;
+  serving?: Amount;
+  /** A noun the user used for the serving — "packet", "bar", "slice". */
+  servingNoun?: string;
+  /** Nutrition for ONE serving. Every field may be absent = unknown. */
+  facts: {
+    calories?: number;
+    proteinG?: number;
+    carbsG?: number;
+    fatG?: number;
+  };
   /** True when the text carried at least one nutrition number. */
   hasFacts: boolean;
-  /** The original input, untouched — tier 3 wants the user's own words. */
+  /** The original input, untouched. */
   raw: string;
 }
+
+/** Nobody eats more than this many servings of anything. A bare number above
+ *  it is a mislaid figure, not a portion — see the note in step 5. */
+const MAX_COUNT = 100;
+/** A weight can legitimately be large (1 kg = 1000 g); this is only a typo net. */
+const MAX_WEIGHT = 100000;
 
 const OZ_TO_G = 28.35;
 const LB_TO_G = 453.592;
 
-/**
- * Extraction is ordered longest-token-first so that a short pattern can't eat
- * part of a long one: `210cal` must be read as calories before `<n>c` gets a
- * chance to see "210c". Each match is blanked out of the working string, so by
- * the end whatever remains is the food's name.
- */
-export function parseFoodQuery(input: string): FoodQuery {
+/** Serving nouns that mean "one of these". An explicit list rather than
+ *  `per <anything>`, because a catch-all reads "chicken per pound" — or a food
+ *  with the word "per" in its name — as a serving marker, and getting that
+ *  wrong silently rescales every macro. */
+const SERVING_NOUNS =
+  'servings?|portions?|bars?|slices?|scoops?|pieces?|items?|packs?|packets?|containers?|bottles?|cans?|pots?|tubs?|sachets?|squares?|cookies?|eggs?|bowls?|cups?|plates?|meals?|whole\\s+things?';
+
+const WEIGHT_UNITS = 'kg|g|grams?|ml|l|litres?|liters?|oz|ounces?|lbs?|pounds?';
+
+function toAmount(value: number, rawUnit: string): Amount {
+  const u = rawUnit.toLowerCase();
+  if (/^kg$/.test(u)) return { value: value * 1000, unit: 'g' };
+  if (/^(g|grams?)$/.test(u)) return { value, unit: 'g' };
+  if (/^ml$/.test(u)) return { value, unit: 'ml' };
+  if (/^(l|litres?|liters?)$/.test(u)) return { value: value * 1000, unit: 'ml' };
+  if (/^(oz|ounces?)$/.test(u)) return { value: Math.round(value * OZ_TO_G * 10) / 10, unit: 'g' };
+  if (/^(lbs?|pounds?)$/.test(u)) return { value: Math.round(value * LB_TO_G * 10) / 10, unit: 'g' };
+  return { value, unit: 'count' };
+}
+
+export function parseFoodInput(input: string): FoodInput {
   const raw = input.trim();
   let rest = ` ${raw} `;
 
@@ -67,91 +104,48 @@ export function parseFoodQuery(input: string): FoodQuery {
     if (m) rest = rest.replace(re, ' ');
     return m;
   };
-
   const num = (s: string | undefined) => {
     if (s === undefined) return undefined;
     const n = parseFloat(s);
     return Number.isFinite(n) ? n : undefined;
   };
 
-  // --- 1. Basis markers -----------------------------------------------------
-  // What amount do the numbers in this text describe? The weight form is tried
-  // first: "per 100g" would otherwise also satisfy the per-serving pattern.
-  //
-  // The serving nouns are an explicit list rather than `per <anything>`: a
-  // catch-all would read "chicken per pound" or a food literally named "per"
-  // as a basis marker, and getting this wrong silently rescales every macro.
-  let basis: FactBasis = 'total';
-  let basisAmount: number | undefined;
+  // --- 1. Explicit serving marker -----------------------------------------
+  // Weight form first: "per 100g" also satisfies the noun pattern via "g".
+  let serving: Amount | undefined;
+  let servingNoun: string | undefined;
 
-  // Any weight, not just 100 — a label stating its figures per 114g portion is
-  // the same instruction as per 100g, and hardcoding 100 silently dropped the
-  // "/114g" and treated the macros as the whole entry's total.
-  const perWeight = take(/(?:\/|\bper\s*)(\d+(?:\.\d+)?)\s*(?:g|ml|grams?)\b/i);
+  const perWeight = take(new RegExp(`(?:\\/|\\bper\\s*)(\\d+(?:\\.\\d+)?)\\s*(${WEIGHT_UNITS})\\b`, 'i'));
   if (perWeight) {
-    basis = 'perWeight';
-    basisAmount = parseFloat(perWeight[1]);
-  } else if (
-    take(
-      /(?:\/|\bper\s*)(?:servings?|portions?|bars?|slices?|scoops?|pieces?|items?|packs?|packets?|containers?|bottles?|cans?|pots?|tubs?|sachets?|squares?|cookies?|eggs?)\b/i,
-    )
-  ) {
-    basis = 'perServing';
-  }
-
-  // --- 2. Quantity ----------------------------------------------------------
-  // Deliberately BEFORE the macro labels. "salmon 200g calories 400" is the
-  // trap: leaving 200g in place lets the number-then-label reader bind it as
-  // "200 calories" and silently log a wrong number. Consuming the quantity
-  // first makes each remaining label unambiguous as the scan moves left to
-  // right.
-  //
-  // The rule this settles on: THE FIRST NUMBER CARRYING A MASS OR VOLUME UNIT
-  // IS THE AMOUNT EATEN. That is true of every natural phrasing ("chicken 200g
-  // 31p 0c 4f", "peanut butter 32g 190 calories 8g protein"), and it fails only
-  // when macros are written before the portion ("31g protein 200g chicken"),
-  // which nobody types. The composer previews the computed result live, so a
-  // misread is visible before anything is logged.
-  let quantity: number | undefined;
-  let unit: FoodUnit | undefined;
-
-  const qty = take(
-    /(\d+(?:\.\d+)?)\s*(kg|g|grams?|ml|l|litres?|liters?|oz|ounces?|lbs?|pounds?|x|ct|counts?|pcs?|pieces?|servings?|slices?|scoops?)\b/i,
-  );
-  if (qty) {
-    const value = parseFloat(qty[1]);
-    const rawUnit = qty[2].toLowerCase();
-    if (/^(kg)$/.test(rawUnit)) {
-      quantity = value * 1000;
-      unit = 'g';
-    } else if (/^(g|grams?)$/.test(rawUnit)) {
-      quantity = value;
-      unit = 'g';
-    } else if (/^(ml)$/.test(rawUnit)) {
-      quantity = value;
-      unit = 'ml';
-    } else if (/^(l|litres?|liters?)$/.test(rawUnit)) {
-      quantity = value * 1000;
-      unit = 'ml';
-    } else if (/^(oz|ounces?)$/.test(rawUnit)) {
-      quantity = Math.round(value * OZ_TO_G * 10) / 10;
-      unit = 'g';
-    } else if (/^(lbs?|pounds?)$/.test(rawUnit)) {
-      quantity = Math.round(value * LB_TO_G * 10) / 10;
-      unit = 'g';
-    } else {
-      quantity = value;
-      unit = 'count';
+    serving = toAmount(parseFloat(perWeight[1]), perWeight[2]);
+  } else {
+    const perNoun = take(new RegExp(`(?:\\/|\\bper\\s*)(\\d+(?:\\.\\d+)?\\s*)?(${SERVING_NOUNS})\\b`, 'i'));
+    if (perNoun) {
+      serving = { value: num(perNoun[1]) ?? 1, unit: 'count' };
+      servingNoun = perNoun[2].toLowerCase();
     }
   }
 
-  // --- 3. Labelled nutrition ("31g protein", "protein 31", "380 calories") ---
+  // --- 2. The first weight ------------------------------------------------
+  // DELIBERATELY BEFORE THE MACRO LABELS, and this ordering is load-bearing.
+  // "salmon 200g calories 400" is the trap: leaving 200g in place lets the
+  // number-then-label reader bind it as "200 calories" and log a wrong number
+  // in silence. Consuming the weight first makes every remaining label
+  // unambiguous as the scan moves left to right.
   //
-  // Labels are resolved IN ORDER OF APPEARANCE, not in a fixed nutrient order.
-  // A fixed order misreads "fat 25 carbs 0": reaching carbs first, its
-  // number-before-label form finds "25 carbs" and steals the value that
-  // belongs to fat. Walking left to right and consuming each match as it is
-  // claimed means every label sees only numbers no earlier label wanted.
+  // What this weight MEANS — the portion eaten, or the portion the facts
+  // describe — is decided in step 5, once we know whether facts turned up.
+  let amount: Amount | undefined;
+  const weight = take(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(${WEIGHT_UNITS})\\b`, 'i'));
+  if (weight) amount = toAmount(parseFloat(weight[1]), weight[2]);
+
+  // --- 3. Labelled nutrition ("31g protein", "protein 31", "380 calories") --
+  //
+  // Resolved IN ORDER OF APPEARANCE, not in a fixed nutrient order. A fixed
+  // order misreads "fat 25 carbs 0": reaching carbs first, its number-before-
+  // label form finds "25 carbs" and steals the value that belongs to fat.
+  // Walking left to right and consuming each match as it is claimed means every
+  // label only ever sees numbers no earlier label wanted.
   const LABELS = [
     { key: 'calories', words: 'kcals?|calories|cals?' },
     { key: 'proteinG', words: 'protein' },
@@ -159,10 +153,10 @@ export function parseFoodQuery(input: string): FoodQuery {
     { key: 'fatG', words: 'fats?' },
   ] as const;
 
-  const facts: Partial<Record<(typeof LABELS)[number]['key'], number>> = {};
+  const facts: FoodInput['facts'] = {};
   // No leading \b: the label is frequently welded to its number ("380cal",
   // "579kcal"), and requiring a boundary there hides it from this scan
-  // entirely. A label found inside ordinary words ("protein bar", "low fat
+  // entirely. A label found inside an ordinary word ("protein bar", "low fat
   // milk") is harmless — neither adjacency form will find a number for it.
   const appearance = LABELS.map(l => ({
     ...l,
@@ -171,132 +165,102 @@ export function parseFoodQuery(input: string): FoodQuery {
     .filter(l => l.at >= 0)
     .sort((a, b) => a.at - b.at);
 
+  // Assigned only when a value was actually found, so an untouched macro has no
+  // key at all rather than a key holding undefined. Same distinction as
+  // everywhere else here: absent means unknown.
+  const set = (key: keyof typeof facts, value: number | undefined) => {
+    if (value !== undefined) facts[key] = value;
+  };
+
   for (const label of appearance) {
     const after = take(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*g?\\s*(?:${label.words})\\b`, 'i'));
     if (after) {
-      facts[label.key] = num(after[1]);
+      set(label.key, num(after[1]));
       continue;
     }
     const before = take(
       new RegExp(`\\b(?:${label.words})\\s*[:=]?\\s*(\\d+(?:\\.\\d+)?)\\s*g?\\b`, 'i'),
     );
-    if (before) facts[label.key] = num(before[1]);
+    if (before) set(label.key, num(before[1]));
   }
-
-  const calories = facts.calories;
-  let proteinG = facts.proteinG;
-  let carbsG = facts.carbsG;
-  let fatG = facts.fatG;
 
   // --- 4. Short form ("31p 0c 4f") -----------------------------------------
   // Only after the labelled forms are gone, so "4 fat" can't be re-read as "4f".
-  if (proteinG === undefined) proteinG = num(take(/(\d+(?:\.\d+)?)\s*p\b/i)?.[1]);
-  if (carbsG === undefined) carbsG = num(take(/(\d+(?:\.\d+)?)\s*c\b/i)?.[1]);
-  if (fatG === undefined) fatG = num(take(/(\d+(?:\.\d+)?)\s*f\b/i)?.[1]);
+  if (facts.proteinG === undefined) set('proteinG', num(take(/(\d+(?:\.\d+)?)\s*p\b/i)?.[1]));
+  if (facts.carbsG === undefined) set('carbsG', num(take(/(\d+(?:\.\d+)?)\s*c\b/i)?.[1]));
+  if (facts.fatG === undefined) set('fatG', num(take(/(\d+(?:\.\d+)?)\s*f\b/i)?.[1]));
 
-  // --- 5. Serving size stated as a bare second weight ----------------------
-  // "salmon 183g 25p 15c 10f 114g" — 183g eaten, macros describing a 114g
-  // portion. Runs only after every macro has been claimed, so the leftover
-  // genuinely is a second weight rather than a value some label wanted.
-  //
-  // It also requires facts to scale and a first weight to scale FROM. Without
-  // this the trailing number fell through to the name ("salmon 114g") and the
-  // macros were logged as the whole entry's total — a silent 38% under-count
-  // on the example above, which is exactly the failure mode worth spending a
-  // rule on.
-  const hasAnyFact =
-    calories !== undefined || proteinG !== undefined || carbsG !== undefined || fatG !== undefined;
-  if (basis === 'total' && hasAnyFact && quantity !== undefined && (unit === 'g' || unit === 'ml')) {
-    const sameUnit = unit === 'g' ? 'g|grams?' : 'ml';
-    const second = take(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(?:${sameUnit})\\b`, 'i'));
-    const amount = num(second?.[1]);
-    if (amount !== undefined && amount > 0) {
-      basis = 'perWeight';
-      basisAmount = amount;
+  const hasFacts =
+    facts.calories !== undefined ||
+    facts.proteinG !== undefined ||
+    facts.carbsG !== undefined ||
+    facts.fatG !== undefined;
+
+  // --- 5. Bare counts ------------------------------------------------------
+  // Only if no weight was found above. These forms have no unit to identify
+  // them, so they run last, once every number a label wanted has been claimed.
+  if (!amount) {
+    // "x2" is never anything but a count, in either order.
+    const mult = take(/[x×]\s*(\d+(?:\.\d+)?)\b/i) ?? take(/(\d+(?:\.\d+)?)\s*[x×]\b/i);
+    if (mult) {
+      amount = { value: parseFloat(mult[1]), unit: 'count' };
+    } else {
+      // A bare trailing number: "welchs 2", "chicken breast 1.5".
+      //
+      // Two guards, both earning their keep. It must be a WHOLE TOKEN at the
+      // end, or "ground beef 90/10" logs itself as ten servings. And it must be
+      // a PLAUSIBLE COUNT: "chipotle chicken 540 96p" leaves a bare 540 behind,
+      // and reading that as 540 servings would multiply the meal by five
+      // hundred. Nobody eats 540 of anything, so a number that large is not a
+      // portion — it is a figure whose label got lost, and it stays visibly in
+      // the name where the label card shows it rather than being consumed into
+      // an amount nobody typed.
+      const trailing = rest.match(/\s(\d+(?:\.\d+)?)\s*$/);
+      const trailingValue = trailing ? parseFloat(trailing[1]) : NaN;
+      if (trailing && trailingValue > 0 && trailingValue <= MAX_COUNT) {
+        rest = rest.replace(/\s(\d+(?:\.\d+)?)\s*$/, ' ');
+        amount = { value: trailingValue, unit: 'count' };
+      } else {
+        // A bare leading integer: "2 eggs". Guarded against "2% milk".
+        const lead = rest.match(/^\s*(\d+(?:\.\d+)?)\s+(?!%)/);
+        const leadValue = lead ? parseFloat(lead[1]) : NaN;
+        if (lead && leadValue > 0 && leadValue <= MAX_COUNT) {
+          rest = rest.replace(/^\s*(\d+(?:\.\d+)?)\s+(?!%)/, ' ');
+          amount = { value: leadValue, unit: 'count' };
+        }
+      }
     }
   }
 
-  // --- 6. Bare leading count ("2 eggs") ------------------------------------
-  // Last, so a leading number that was really a macro value has already been
-  // claimed by its label. Guarded against "2% milk".
-  if (quantity === undefined) {
-    const lead = take(/^\s*(\d+)\s+(?!%)/);
-    if (lead) {
-      quantity = parseFloat(lead[1]);
-      unit = 'count';
-    }
+  // An amount of zero or worse would erase the entry, and an absurd one is a
+  // typo rather than an instruction. Dropped rather than clamped: silently
+  // logging 100× a meal is worse than ignoring a stray token.
+  if (amount && !(amount.value > 0 && amount.value <= MAX_WEIGHT)) amount = undefined;
+
+  // --- 6. The one ambiguity ------------------------------------------------
+  // See the header. With facts in the text and no explicit `per`, a weight is
+  // describing those facts, not the portion eaten: "salmon 100g 208cal 25p" is
+  // a label being entered, not 100 g being logged.
+  if (hasFacts && !serving && amount && amount.unit !== 'count') {
+    serving = amount;
+    amount = undefined;
   }
 
-  // --- 7. Multiplier ("… 2x", "… x2") --------------------------------------
-  // Deliberately LAST, and this ordering is the whole trick. `2x` is ambiguous:
-  // in "banana 2x" it's the amount, in "chicken 200g 31p 0c 4f 2x" it means two
-  // of that 200g portion. Running after the quantity step resolves it by what's
-  // already been claimed — if a quantity was found, a leftover `2x` can only be
-  // a multiplier. The `x2` form is never an amount, so it is always one.
-  //
-  // Before this existed the token fell through to the name ("chicken 2x") and
-  // the entry logged as a SINGLE serving — the silent-half-portion bug.
-  let multiplier: number | undefined;
-  const multMatch =
-    take(/[x×]\s*(\d+(?:\.\d+)?)\b/i) ?? (quantity !== undefined ? take(/(\d+(?:\.\d+)?)\s*[x×]\b/i) : null);
-  if (multMatch) {
-    const value = parseFloat(multMatch[1]);
-    // A multiplier of 0 would erase the entry and an absurd one is a typo, not
-    // an instruction. Out-of-range values are ignored rather than clamped —
-    // silently logging 100× a meal is worse than ignoring a stray token.
-    if (Number.isFinite(value) && value > 0 && value <= 100) multiplier = value;
-  }
-
-  if (multiplier !== undefined && quantity !== undefined) {
-    quantity = Math.round(quantity * multiplier * 10) / 10;
-  }
-
-  // --- 8. Name = the leftovers ---------------------------------------------
+  // --- 7. Name = the leftovers ---------------------------------------------
   const name = rest
     .replace(/[@,;:]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
-  const hasFacts =
-    calories !== undefined ||
-    proteinG !== undefined ||
-    carbsG !== undefined ||
-    fatG !== undefined;
-
-  return {
-    name,
-    quantity,
-    unit,
-    calories,
-    proteinG,
-    carbsG,
-    fatG,
-    basis,
-    basisAmount,
-    multiplier,
-    hasFacts,
-    raw,
-  };
+  return { name, amount, serving, servingNoun, facts, hasFacts, raw };
 }
 
-/**
- * How many "basis units" of the food were eaten, given the basis its numbers
- * are written against. Per-100g facts with a 250g quantity → 2.5; per-114g
- * facts with a 183g quantity → 1.605.
- *
- * The multiplier is folded in once and only once. Where a quantity exists it is
- * ALREADY multiplied (parseFoodQuery does that so the displayed amount reads as
- * the true total), so scales derived from the quantity must not multiply again
- * — double-counting there would quietly log 4× a doubled portion.
- */
-export function basisScale(q: FoodQuery): number {
-  const multiplier = q.multiplier ?? 1;
-
-  if (q.basis === 'perWeight') {
-    const per = q.basisAmount && q.basisAmount > 0 ? q.basisAmount : 100;
-    if ((q.unit === 'g' || q.unit === 'ml') && q.quantity) return q.quantity / per;
-    return multiplier;
+/** "100 g" / "1 packet" / "1 (whole thing)" — how a serving reads on screen. */
+export function servingLabel(serving: Amount | undefined, noun?: string): string {
+  if (!serving) return '1 (whole thing)';
+  if (serving.unit === 'count') {
+    const word = noun ? noun.replace(/s$/, '') : null;
+    return word ? `${serving.value} ${word}` : `${serving.value} (whole thing)`;
   }
-  if (q.basis === 'perServing') return q.quantity ?? multiplier;
-  return multiplier;
+  return `${serving.value} ${serving.unit}`;
 }

@@ -7,7 +7,6 @@
 // The forbidden one-liner that flips a 23:30 UTC-5 timestamp to "tomorrow" is
 // documented in PITFALLS.md §Pitfall 4 — read that before editing this file.
 
-import type { MealBucket } from '@/db/schema';
 
 export function todayKey(): string {
   return dateToKey(new Date());
@@ -33,15 +32,3 @@ export function addDays(key: string, days: number): string {
   return dateToKey(date);
 }
 
-/**
- * Infer meal bucket from local time per CONTEXT.md D-08.
- * breakfast < 11:00, lunch < 15:00, dinner < 21:00, snack otherwise.
- * Uses local getHours() — not the UTC hour variant — same reason dayKey uses local getters (Pitfall #4).
- */
-export function inferBucket(date: Date = new Date()): MealBucket {
-  const h = date.getHours();
-  if (h < 11) return 'breakfast';
-  if (h < 15) return 'lunch';
-  if (h < 21) return 'dinner';
-  return 'snack';
-}

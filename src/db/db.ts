@@ -51,7 +51,7 @@ import { normalizeFoodName } from '@/lib/normalizeFoodName';
  * TRANSACTION RULE (Pitfall #1): Inside db.transaction('rw', tables, async () => {...})
  * every `await` must be a Dexie call. A non-IDB await (fetch, setTimeout, OPFS call,
  * etc.) causes IDB to auto-commit and drop subsequent writes silently. The Anthropic
- * parse call in parse.svc.ts must ALWAYS complete before any Dexie transaction begins.
+ * Every await inside a transaction must be a Dexie call.
  * ========================================================================= */
 
 export class HealthTrackerDB extends Dexie {

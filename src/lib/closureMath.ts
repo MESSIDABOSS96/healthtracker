@@ -58,6 +58,12 @@ export function resolveWeightDirection(
   return 'lose';
 }
 
+/**
+ * Protein is a FLOOR, so an incomplete day can still clear it: 150 g of protein
+ * you definitely ate is 150 g whether or not some other meal's protein was
+ * never filled in. The unknowns can only mean there was more. See the note on
+ * calorieComponent for the other half of this rule.
+ */
 export function proteinComponent(proteinG: number, goal: number): ClosureComponent {
   // No goal set is not a failure the user can act on — treat it as satisfied
   // rather than permanently blocking closure.
@@ -65,11 +71,28 @@ export function proteinComponent(proteinG: number, goal: number): ClosureCompone
   return { progress: clamp01(proteinG / goal), met: proteinG >= goal };
 }
 
+/**
+ * @param unknownCalories - the day holds at least one meal with no calorie
+ * figure, so `calories` is a FLOOR rather than a total.
+ *
+ * AN UNKNOWN CANNOT HELP YOU CLEAR A CEILING, AND CANNOT STOP YOU CLEARING A
+ * FLOOR. That single rule settles every case here, and it falls out of what the
+ * unknown could be hiding: a meal with no calorie figure can only push the true
+ * total UP. On a cut, where the goal is a ceiling, that means a day with a
+ * blank meal in it cannot be shown to be under the limit — so it does not pass,
+ * however small the known sum looks. On a bulk, where the goal is a floor, the
+ * same blank is irrelevant to a total that already cleared it.
+ *
+ * This is the same argument as the `hasFood` guard directly below, one step
+ * further on: 0 kcal is not a day spent under your limit, and neither is 400
+ * kcal plus a dinner you never gave a number to.
+ */
 export function calorieComponent(
   calories: number,
   goal: number,
   direction: WeightDirection,
   hasFood: boolean,
+  unknownCalories = false,
 ): ClosureComponent {
   if (!(goal > 0)) return { progress: 1, met: true };
   // An unlogged day is not a day spent under your limit. Without this guard a
@@ -80,8 +103,16 @@ export function calorieComponent(
   const ratio = calories / goal;
 
   if (direction === 'gain') {
-    // A floor you climb toward: every calorie counts until you clear it.
+    // A floor you climb toward: every calorie counts until you clear it. An
+    // unknown can only add to the total, so it can't invalidate a pass here.
     return { progress: clamp01(ratio), met: calories >= goal };
+  }
+
+  // Ceiling and band directions below — both need to see the whole day, and
+  // this one has a hole in it. Progress still reflects what IS known, so the
+  // ring reads as partly earned rather than blank.
+  if (unknownCalories) {
+    return { progress: clamp01(ratio), met: false };
   }
 
   // Overshoot decay, shared by 'lose' and 'maintain'.

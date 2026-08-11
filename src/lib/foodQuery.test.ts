@@ -1,274 +1,144 @@
 // src/lib/foodQuery.test.ts
-// Run with `npm test` (node's built-in runner + type stripping — no deps).
+// The parser can be wrong SILENTLY — it always returns something, and a
+// misread produces a plausible number rather than an error. That is the entire
+// reason this file exists, and why the cases below are the specific ones that
+// have bitten rather than a sweep of happy paths.
 //
-// This file exists because foodQuery is the one place in the app that can be
-// WRONG SILENTLY. A slow parse is annoying; a parse that reads "salmon 200g
-// calories 400" as 200 calories writes a plausible wrong number into the log
-// and the user never sees it. Every case below is a phrasing that broke during
-// development — the ordering rules in foodQuery.ts are load-bearing, not style.
+// Run with `npm test`.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFoodQuery, basisScale } from './foodQuery.ts';
+import { parseFoodInput } from './foodQuery.ts';
 
-function expect(input: string, fields: Partial<ReturnType<typeof parseFoodQuery>>) {
-  const got = parseFoodQuery(input) as Record<string, unknown>;
-  for (const [key, value] of Object.entries(fields)) {
-    assert.equal(got[key], value, `${input} → ${key}`);
-  }
-}
-
-test('name only — no facts, nothing to calculate', () => {
-  expect('banana', { name: 'banana', hasFacts: false, quantity: undefined });
+test('the reported bug: an explicit calorie figure is never discarded', () => {
+  const q = parseFoodInput('chipotle chicken 540cal 96p');
+  assert.equal(q.name, 'chipotle chicken');
+  assert.equal(q.facts.calories, 540);
+  assert.equal(q.facts.proteinG, 96);
+  // The point of the redesign: what wasn't said stays unsaid. Carbs and fat as
+  // 0 here is what let calories be re-derived as 4×96 = 384.
+  assert.equal(q.facts.carbsG, undefined);
+  assert.equal(q.facts.fatG, undefined);
 });
 
-test('name + weight — a lookup with a scale factor', () => {
-  expect('banana 120g', { name: 'banana', quantity: 120, unit: 'g', hasFacts: false });
+test('a bare number next to a labelled macro is not silently eaten', () => {
+  // "chipotle chicken 540 96p" — 540 has no unit and no label. It must not
+  // vanish into the name without trace, and it must not be read as an amount
+  // that would rescale the protein.
+  const q = parseFoodInput('chipotle chicken 540 96p');
+  assert.equal(q.facts.proteinG, 96);
+  assert.equal(q.facts.calories, undefined);
+  assert.equal(q.amount, undefined, '540 must not become a portion count');
 });
 
-test('short-form macros with per-100g basis', () => {
-  expect('chicken 200g 31p 0c 4f /100g', {
-    name: 'chicken',
-    quantity: 200,
-    unit: 'g',
-    proteinG: 31,
-    carbsG: 0,
-    fatG: 4,
-    basis: 'perWeight',
-    hasFacts: true,
-  });
-  assert.equal(basisScale(parseFoodQuery('chicken 200g 31p 0c 4f /100g')), 2);
+test('facts always describe one serving; an explicit per marker sets it', () => {
+  const q = parseFoodInput('chicken breast 165cal 31p 3.6f per 100g');
+  assert.equal(q.name, 'chicken breast');
+  assert.deepEqual(q.serving, { value: 100, unit: 'g' });
+  assert.equal(q.facts.calories, 165);
+  assert.equal(q.facts.proteinG, 31);
+  assert.equal(q.facts.fatG, 3.6);
+  assert.equal(q.amount, undefined);
 });
 
-test('calories welded to their label', () => {
-  expect('oats 80g 380cal', { name: 'oats', quantity: 80, calories: 380 });
-  expect('almonds 28g 579kcal 21.2p 21.6c 49.9f per 100g', {
-    name: 'almonds',
-    quantity: 28,
-    calories: 579,
-    proteinG: 21.2,
-    basis: 'perWeight',
-  });
+test('per-noun servings: a packet is one of something', () => {
+  const q = parseFoodInput('welchs 80cal 0p per packet');
+  assert.deepEqual(q.serving, { value: 1, unit: 'count' });
+  assert.equal(q.servingNoun, 'packet');
+  assert.equal(q.facts.calories, 80);
+  assert.equal(q.facts.proteinG, 0, 'an explicit 0 is a real claim, unlike a blank');
 });
 
-test('label-before-number phrasing', () => {
-  // The quantity must be consumed first or "200g calories" reads as 200 kcal.
-  expect('salmon 200g calories 400 protein 40 fat 25 carbs 0', {
-    name: 'salmon',
-    quantity: 200,
-    unit: 'g',
-    calories: 400,
-    proteinG: 40,
-    carbsG: 0,
-    fatG: 25,
-  });
-  // Labels must resolve in order of appearance, or carbs steals fat's 25.
-  expect('chicken 150g protein 31 carbs 0 fat 3.6 kcal 165 /100g', {
-    quantity: 150,
-    calories: 165,
-    proteinG: 31,
-    carbsG: 0,
-    fatG: 3.6,
-    basis: 'perWeight',
-  });
+test('THE ambiguity: with facts and no per marker, a weight is the serving', () => {
+  // "salmon 100g 208cal 25p" is a label being entered, not 100 g being logged.
+  const q = parseFoodInput('salmon 100g 208cal 25p');
+  assert.deepEqual(q.serving, { value: 100, unit: 'g' });
+  assert.equal(q.amount, undefined);
 });
 
-test('number-before-label phrasing', () => {
-  expect('greek yogurt 200g 10g protein 4g carbs 0g fat', {
-    name: 'greek yogurt',
-    quantity: 200,
-    proteinG: 10,
-    carbsG: 4,
-    fatG: 0,
-  });
-  expect('yogurt 170g 100 cal 17 protein 6 carbs 0 fat', {
-    quantity: 170,
-    calories: 100,
-    proteinG: 17,
-    carbsG: 6,
-    fatG: 0,
-  });
+test('THE ambiguity, other side: with no facts, a weight is the amount', () => {
+  const q = parseFoodInput('chicken breast 150g');
+  assert.deepEqual(q.amount, { value: 150, unit: 'g' });
+  assert.equal(q.serving, undefined);
+  assert.equal(q.name, 'chicken breast');
 });
 
-test('mixed phrasing in one line', () => {
-  expect('peanut butter 32g 190 calories 8g protein 6g carbs 16g fat', {
-    name: 'peanut butter',
-    quantity: 32,
-    calories: 190,
-    proteinG: 8,
-    carbsG: 6,
-    fatG: 16,
-  });
+test('an explicit per marker outranks the inference', () => {
+  const q = parseFoodInput('salmon 208cal 25p 13f per 100g 183g');
+  assert.deepEqual(q.serving, { value: 100, unit: 'g' });
+  assert.deepEqual(q.amount, { value: 183, unit: 'g' });
 });
 
-test('unit conversion', () => {
-  expect('chicken breast 8oz', { name: 'chicken breast', quantity: 226.8, unit: 'g' });
-  expect('1 lb ground beef', { name: 'ground beef', quantity: 453.6, unit: 'g' });
-  expect('milk 1l', { name: 'milk', quantity: 1000, unit: 'ml' });
-  expect('rice 150 g', { name: 'rice', quantity: 150, unit: 'g' });
+test('a bare trailing number is a count of servings', () => {
+  assert.deepEqual(parseFoodInput('welchs 2').amount, { value: 2, unit: 'count' });
+  assert.deepEqual(parseFoodInput('chicken breast 1.5').amount, { value: 1.5, unit: 'count' });
+  assert.equal(parseFoodInput('chicken breast 1.5').name, 'chicken breast');
 });
 
-test('counts', () => {
-  expect('2 eggs', { name: 'eggs', quantity: 2, unit: 'count' });
-  expect('2 eggs 140cal', { name: 'eggs', quantity: 2, unit: 'count', calories: 140 });
-  expect('bread 2 slices', { name: 'bread', quantity: 2, unit: 'count' });
-  expect('protein bar 1x 210cal 20p 22c 7f', {
-    name: 'protein bar',
-    quantity: 1,
-    unit: 'count',
-    calories: 210,
-    proteinG: 20,
-  });
+test('a number welded into a name is not mistaken for an amount', () => {
+  // The trailing-number rule requires a whole token, or "ground beef 90/10"
+  // logs itself as ten servings.
+  const q = parseFoodInput('ground beef 90/10');
+  assert.equal(q.amount, undefined);
+  assert.equal(q.name, 'ground beef 90/10');
 });
 
-test('a percentage in a name is not a count', () => {
-  expect('2% milk 250ml', { name: '2% milk', quantity: 250, unit: 'ml' });
+test('nothing stated means nothing assumed', () => {
+  const q = parseFoodInput('chipotle bowl');
+  assert.equal(q.name, 'chipotle bowl');
+  assert.equal(q.amount, undefined);
+  assert.equal(q.serving, undefined);
+  assert.equal(q.hasFacts, false);
+  assert.deepEqual(q.facts, {});
 });
 
-test('per-serving basis scales by the number of servings', () => {
-  const q = parseFoodQuery('cereal 2 servings per serving 240 calories');
-  assert.equal(q.basis, 'perServing');
-  assert.equal(q.quantity, 2);
-  assert.equal(basisScale(q), 2);
+test('quantity is consumed before macro labels', () => {
+  // Leaving 200g in place lets the number-then-label reader bind it as
+  // "200 calories" and log a wrong number in silence.
+  const q = parseFoodInput('salmon 200g calories 400');
+  assert.equal(q.facts.calories, 400);
+  assert.deepEqual(q.serving, { value: 200, unit: 'g' });
 });
 
-// --- multipliers -----------------------------------------------------------
-// `2x` used to fall through to the NAME ("chicken 2x") and log a single
-// serving — half of what was typed, with nothing on screen to say so.
-
-test('a trailing multiplier doubles amount and macros', () => {
-  const q = parseFoodQuery('chicken 200g 31p 0c 4f 2x');
-  assert.equal(q.name, 'chicken');
-  assert.equal(q.quantity, 400);
-  assert.equal(q.unit, 'g');
-  assert.equal(q.multiplier, 2);
-  assert.equal(basisScale(q), 2); // total basis → macros scale by the multiplier
+test('labels resolve in order of appearance, not in nutrient order', () => {
+  // A fixed order misreads this: carbs, reached first, finds "25 carbs" via its
+  // number-before-label form and steals the value that belongs to fat.
+  const q = parseFoodInput('cheese 200cal fat 25 carbs 0');
+  assert.equal(q.facts.fatG, 25);
+  assert.equal(q.facts.carbsG, 0);
 });
 
-test('the x-first form works too', () => {
-  const q = parseFoodQuery('chicken 200g 31p 0c 4f x2');
-  assert.equal(q.name, 'chicken');
-  assert.equal(q.quantity, 400);
-  assert.equal(q.multiplier, 2);
-  assert.equal(basisScale(q), 2);
+test('short form only runs after labelled forms are gone', () => {
+  const q = parseFoodInput('mix 100cal 4 fat 10c');
+  assert.equal(q.facts.fatG, 4, '"4 fat" must not be re-read as "4f"');
+  assert.equal(q.facts.carbsG, 10);
 });
 
-test('a multiplier with no amount is the amount', () => {
-  const q = parseFoodQuery('protein bar 210cal 20p 22c 7f x2');
-  assert.equal(q.name, 'protein bar');
-  assert.equal(q.quantity, undefined);
-  assert.equal(q.multiplier, 2);
-  assert.equal(basisScale(q), 2);
+test('x2 and 2x are counts, wherever they sit', () => {
+  assert.deepEqual(parseFoodInput('protein bar x2').amount, { value: 2, unit: 'count' });
+  assert.deepEqual(parseFoodInput('protein bar 2x').amount, { value: 2, unit: 'count' });
 });
 
-test('a bare Nx is still an amount when nothing else claims one', () => {
-  // "banana 2x" means two bananas — NOT one banana times two.
-  const q = parseFoodQuery('banana 2x');
-  assert.equal(q.name, 'banana');
-  assert.equal(q.quantity, 2);
-  assert.equal(q.unit, 'count');
-  assert.equal(q.multiplier, undefined);
+test('units convert to grams and millilitres', () => {
+  assert.deepEqual(parseFoodInput('chicken 6oz').amount, { value: 170.1, unit: 'g' });
+  assert.deepEqual(parseFoodInput('milk 1l').amount, { value: 1000, unit: 'ml' });
+  assert.deepEqual(parseFoodInput('rice 1kg').amount, { value: 1000, unit: 'g' });
 });
 
-test('the multiplier is folded in exactly once with per-100g facts', () => {
-  // 200g × 2 = 400g of a food whose facts are per 100g → scale 4, not 8.
-  const q = parseFoodQuery('chicken 200g 31p 0c 4f /100g 2x');
-  assert.equal(q.quantity, 400);
-  assert.equal(q.basis, 'perWeight');
-  assert.equal(basisScale(q), 4);
+test('an absurd or zero amount is dropped, never clamped', () => {
+  // Silently logging 500000× a meal is worse than ignoring a stray token.
+  assert.equal(parseFoodInput('rice 0').amount, undefined);
+  assert.equal(parseFoodInput('rice 500000').amount, undefined);
 });
 
-test('absurd or empty multipliers are ignored, not applied', () => {
-  assert.equal(parseFoodQuery('chicken 200g 31p 0c 4f x0').multiplier, undefined);
-  assert.equal(parseFoodQuery('chicken 200g 31p 0c 4f x500').multiplier, undefined);
+test('a leading count still works', () => {
+  const q = parseFoodInput('2 eggs');
+  assert.deepEqual(q.amount, { value: 2, unit: 'count' });
+  assert.equal(q.name, 'eggs');
 });
 
-test('half portions work', () => {
-  const q = parseFoodQuery('pizza slice 285cal 12p 36c 10f x1.5');
-  assert.equal(q.multiplier, 1.5);
-  assert.equal(basisScale(q), 1.5);
-});
-
-// --- per-serving phrasings --------------------------------------------------
-
-test('per-serving facts scale by how many servings you had', () => {
-  for (const phrase of [
-    'per serving', '/serving', 'per portion', 'per bar', 'per scoop',
-    'per pot', 'per tub', 'per slice', 'per packet', 'per square',
-  ]) {
-    const q = parseFoodQuery(`cereal 2 servings ${phrase} 240 calories`);
-    assert.equal(q.basis, 'perServing', phrase);
-    assert.equal(basisScale(q), 2, phrase);
-  }
-});
-
-test('per-serving facts combine with a multiplier', () => {
-  const q = parseFoodQuery('protein bar per bar 210cal 20p 22c 7f x3');
-  assert.equal(q.basis, 'perServing');
-  assert.equal(q.multiplier, 3);
-  assert.equal(basisScale(q), 3);
-});
-
-test('per 100g still beats the per-serving patterns', () => {
-  // "per 100g" also matches nothing in the serving list, but the ordering
-  // matters if that list ever grows a unit-like word.
-  assert.equal(parseFoodQuery('chicken 200g 31p 0c 4f per 100g').basis, 'perWeight');
-});
-
-// --- serving size as a second weight ---------------------------------------
-// The label states its figures for a 114g portion; you ate 183g. Before this
-// worked, the trailing 114g fell into the NAME ("salmon 114g") and the macros
-// logged as the total for 183g — a silent 38% under-count.
-
-test('a bare second weight is the serving the macros describe', () => {
-  const q = parseFoodQuery('salmon 183g 25p 15c 10f 114g');
-  assert.equal(q.name, 'salmon');
-  assert.equal(q.quantity, 183);
-  assert.equal(q.unit, 'g');
-  assert.equal(q.basis, 'perWeight');
-  assert.equal(q.basisAmount, 114);
-  assert.equal(basisScale(q).toFixed(3), '1.605');
-  // 25g protein per 114g → 40.1g for 183g eaten.
-  assert.equal((25 * basisScale(q)).toFixed(1), '40.1');
-});
-
-test('the explicit per-N forms mean the same thing', () => {
-  for (const phrase of ['per 114g', '/114g', 'per114g']) {
-    const q = parseFoodQuery(`salmon 183g 25p 15c 10f ${phrase}`);
-    assert.equal(q.basis, 'perWeight', phrase);
-    assert.equal(q.basisAmount, 114, phrase);
-    assert.equal(q.name, 'salmon', phrase);
-  }
-});
-
-test('per 100g is just the common case of the same rule', () => {
-  const q = parseFoodQuery('chicken 200g 31p 0c 4f /100g');
-  assert.equal(q.basisAmount, 100);
-  assert.equal(basisScale(q), 2);
-});
-
-test('a second weight needs facts to scale and a first weight to scale from', () => {
-  // No macros — nothing to rescale, so the second weight must not hijack the basis.
-  assert.equal(parseFoodQuery('salmon 183g 114g').basis, 'total');
-  // Counts have no weight basis to divide by.
-  assert.equal(parseFoodQuery('2 eggs 140cal 50g').basis, 'total');
-});
-
-test('a second weight only binds a matching unit', () => {
-  // ml eaten, g stated — not the same measure, so no basis is inferred.
-  const q = parseFoodQuery('shake 300ml 25p 10c 3f 40g');
-  assert.equal(q.basis, 'total');
-});
-
-test('serving size combines with a multiplier', () => {
-  // Two 183g portions of a food whose facts describe 114g.
-  const q = parseFoodQuery('salmon 183g 25p 15c 10f 114g x2');
-  assert.equal(q.quantity, 366);
-  assert.equal(q.basisAmount, 114);
-  assert.equal(basisScale(q).toFixed(3), '3.211');
-});
-
-test('label words inside a food name claim no numbers', () => {
-  expect('low fat milk 250ml', { name: 'low fat milk', quantity: 250, fatG: undefined });
-  expect('protein bar', { name: 'protein bar', hasFacts: false });
+test('2% milk is not two servings of milk', () => {
+  const q = parseFoodInput('2% milk');
+  assert.equal(q.amount, undefined);
+  assert.equal(q.name, '2% milk');
 });

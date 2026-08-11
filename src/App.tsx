@@ -4,7 +4,6 @@ import { AppShell } from './components/AppShell';
 import { DailyScreen } from './routes/DailyScreen';
 import { SettingsScreen } from './routes/SettingsScreen';
 import { DayDetailScreen } from './routes/DayDetailScreen';
-import { FormatHelpScreen } from './routes/FormatHelpScreen';
 
 // Recharts only ships when the Dashboard is opened — keeps the Daily tab light.
 const DashboardScreen = lazy(() =>
@@ -35,7 +34,6 @@ export default function App() {
           <Route path="/settings" element={<SettingsScreen />} />
           {/* A sub-page of Settings, not a tab — it has no nav entry and links
               back to Settings itself. */}
-          <Route path="/help" element={<FormatHelpScreen />} />
         </Routes>
       </AppShell>
     </HashRouter>

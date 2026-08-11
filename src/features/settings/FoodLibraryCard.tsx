@@ -24,10 +24,10 @@ import { deleteFood, updateFood, unhideFoodInChips } from '@/services/food.svc';
 import { SettingsCard } from './SettingsCard';
 import { Button } from '@/components/ui/button';
 import { field, focusRing } from '@/components/ui/styles';
+import { parseMacroField, showMacro } from '@/lib/macros';
 import { cn } from '@/lib/utils';
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
-const num = (s: string) => Math.max(0, parseFloat(s) || 0);
 
 /** Past this many rows the list gets its own filter box rather than a scroll. */
 const SEARCH_THRESHOLD = 8;
@@ -40,13 +40,16 @@ interface DraftFacts {
   fatG: string;
 }
 
+/** Unknown stays an empty field — see the same note in MealEntryRow. */
+const showField = (n: number | undefined) => (n === undefined ? '' : String(round1(n)));
+
 function toDraft(food: Food): DraftFacts {
   return {
     name: food.name,
-    calories: String(round1(food.calories)),
-    proteinG: String(round1(food.proteinG)),
-    carbsG: String(round1(food.carbsG)),
-    fatG: String(round1(food.fatG)),
+    calories: showField(food.calories),
+    proteinG: showField(food.proteinG),
+    carbsG: showField(food.carbsG),
+    fatG: showField(food.fatG),
   };
 }
 
@@ -83,10 +86,10 @@ export function FoodLibraryCard({ className }: { className?: string }) {
     if (!draft) return;
     await updateFood(food.id, {
       name: draft.name,
-      calories: num(draft.calories),
-      proteinG: num(draft.proteinG),
-      carbsG: num(draft.carbsG),
-      fatG: num(draft.fatG),
+      calories: parseMacroField(draft.calories),
+      proteinG: parseMacroField(draft.proteinG),
+      carbsG: parseMacroField(draft.carbsG),
+      fatG: parseMacroField(draft.fatG),
     });
     cancelEdit();
   };
@@ -210,10 +213,10 @@ export function FoodLibraryCard({ className }: { className?: string }) {
                         )}
                       </span>
                       <span className="mt-0.5 block truncate text-[11.5px] text-faint">
-                        <span className="stat">{Math.round(food.calories)}</span> kcal ·{' '}
-                        <span className="stat">{round1(food.proteinG)}</span>P{' '}
-                        <span className="stat">{round1(food.carbsG)}</span>C{' '}
-                        <span className="stat">{round1(food.fatG)}</span>F · per{' '}
+                        <span className="stat">{showMacro(food.calories)}</span> kcal ·{' '}
+                        <span className="stat">{showMacro(food.proteinG, 1)}</span>P{' '}
+                        <span className="stat">{showMacro(food.carbsG, 1)}</span>C{' '}
+                        <span className="stat">{showMacro(food.fatG, 1)}</span>F · per{' '}
                         {food.servingLabel}
                       </span>
                     </span>

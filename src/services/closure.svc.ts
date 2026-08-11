@@ -55,6 +55,12 @@ export interface DayClosure {
   lift: boolean;
   cardio: boolean;
   direction: WeightDirection;
+  /**
+   * How many of the day's meals carry no calorie figure. Non-zero means
+   * `caloriesTotal` is a floor, the calorie component cannot pass a ceiling,
+   * and the UI owes the user a note saying which meals to fill in.
+   */
+  mealsMissingCalories: number;
 }
 
 function emptyClosure(
@@ -75,6 +81,7 @@ function emptyClosure(
     lift: false,
     cardio: false,
     direction,
+    mealsMissingCalories: 0,
   };
 }
 
@@ -112,8 +119,13 @@ export async function getClosureForRange(
   const hasFood = new Set<string>();
   for (const m of meals) {
     const day = ensure(m.dayKey);
-    day.proteinTotal += m.computedProteinG;
-    day.caloriesTotal += m.computedCalories;
+    // Unknowns are counted, not summed. A meal with no protein figure adds
+    // nothing to the protein total and nothing to the missing count either —
+    // protein is a floor, and a floor is unharmed by what it can't see. A meal
+    // with no calorie figure is the case that matters, and it is tracked.
+    if (m.computedProteinG !== undefined) day.proteinTotal += m.computedProteinG;
+    if (m.computedCalories !== undefined) day.caloriesTotal += m.computedCalories;
+    else day.mealsMissingCalories += 1;
     hasFood.add(m.dayKey);
   }
   for (const c of checkins) {
@@ -126,7 +138,13 @@ export async function getClosureForRange(
     day.proteinTotal = Math.round(day.proteinTotal * 10) / 10;
     day.caloriesTotal = Math.round(day.caloriesTotal);
     day.protein = proteinComponent(day.proteinTotal, proteinGoal);
-    day.calories = calorieComponent(day.caloriesTotal, caloriesGoal, direction, hasFood.has(key));
+    day.calories = calorieComponent(
+      day.caloriesTotal,
+      caloriesGoal,
+      direction,
+      hasFood.has(key),
+      day.mealsMissingCalories > 0,
+    );
     day.training = trainingComponent(day.lift, day.cardio);
     day.progress = (day.protein.progress + day.calories.progress + day.training.progress) / 3;
     day.closed = day.protein.met && day.calories.met && day.training.met;

@@ -1,47 +1,45 @@
 // src/features/food/FoodEntry.tsx
-// Freeform food entry, resolved as you type.
+// Food entry.
 //
-// The composer's job is to make logging feel like arithmetic, not like a
-// request. Every keystroke re-runs the deterministic tiers of the resolver
-// (your library → the bundled USDA table → the 4/4/9 calculator when the text
-// carries its own numbers); all three are synchronous, so the answer is already
-// on screen before you reach for Enter. Nothing spins, because nothing is
-// waiting on a network.
+// The whole system is one sentence: THE APP EITHER KNOWS A FOOD, OR IT ASKS YOU
+// ONCE. Logging is a single line forever after — a name and how much — because
+// every scenario reduces to the same shape:
 //
-// The model tier is the exception and looks like one: it only runs when you ask
-// for it or when nothing local matched, it shows a spinner, and its result goes
-// through the editable confirm card before anything is saved (CLAUDE.md rule
-// #7 — the hallucination guard applies to generated numbers, not to arithmetic
-// or to a row the user already confirmed once).
+//   chipotle bowl          a meal, one serving = the whole thing
+//   welchs 2               a snack, one serving = one packet
+//   chicken breast 1.5     a food measured per serving
+//   chicken breast 150g    …the same food, said by weight; it divides for you
 //
-// Deterministic logs write straight through and offer an undo instead. That
-// trade is the entire point: a confirm tap on a number the app DERIVED rather
-// than guessed is friction with nothing on the other side of it.
+// The first time a name appears the app has nothing to log, so the label card
+// opens underneath and fills itself in from whatever the text already carried.
+// You finish it, and that name never asks again.
+//
+// What this replaced, and why: entry used to run a four-tier resolver (your
+// library → a bundled USDA table → a language model) whose answer went straight
+// into the log. The tiers were fast, but the composer showed only the ANSWER
+// and never what it had READ, so a misparse and a correct parse looked
+// identical. Typing "chipotle chicken 540 96p" logged 384 kcal — the 540 fell
+// into the name, and calories were re-derived from protein — with nothing on
+// screen to say so. Now the parse is a typing shortcut into fields you can see,
+// and nothing is ever logged that wasn't visible first.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { Link } from 'react-router-dom';
-import { ArrowUp, Loader2, Sparkles, TriangleAlert, Undo2 } from 'lucide-react';
-import type { MealBucket } from '@/db/schema';
+import { ArrowUp, Pencil, TriangleAlert, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Segmented } from '@/components/ui/segmented';
 import { field, focusRing, press } from '@/components/ui/styles';
-import { inferBucket } from '@/lib/dayKey';
-import { getApiKey } from '@/lib/apiKey';
-import { isMacroMathSuspicious, ParseError, type ParsedFood } from '@/services/parse.svc';
-import {
-  resolveInstant,
-  resolveWithAI,
-  type ResolveTier,
-  type Resolution,
-} from '@/services/resolve.svc';
-import { preloadFoodTable } from '@/services/foodTable.svc';
-import { logParsedFood } from '@/services/food.svc';
+import { parseMacroField, scaleMacros, showMacro, type Macros } from '@/lib/macros';
+import { draftFromInput, resolveEntry, type LabelDraft, type Match, type Resolution } from '@/services/resolve.svc';
+import { saveLabelAndLog } from '@/services/food.svc';
 import { logMeal, undoMealLog } from '@/services/meals.svc';
 import { cn } from '@/lib/utils';
 
-const BUCKETS: MealBucket[] = ['breakfast', 'lunch', 'dinner', 'snack'];
-const BUCKET_OPTIONS = BUCKETS.map(b => ({ value: b, label: b }));
+const UNIT_OPTIONS = [
+  { value: 'count', label: 'each' },
+  { value: 'g', label: 'g' },
+  { value: 'ml', label: 'ml' },
+];
 
 /** Long enough to notice and reach, short enough not to hang around. */
 const UNDO_WINDOW_MS = 7000;
@@ -50,73 +48,37 @@ const UNDO_WINDOW_MS = 7000;
  *  the results visibly lagging the caret. */
 const RESOLVE_DEBOUNCE_MS = 110;
 
-const TIER_LABEL: Record<ResolveTier, string> = {
-  calculator: 'Calculated',
-  library: 'Your library',
-  table: 'USDA',
-  ai: 'AI estimate',
-};
-
-interface Draft {
-  name: string;
-  quantity: string;
-  unit: string;
-  calories: string;
-  proteinG: string;
-  carbsG: string;
-  fatG: string;
-  assumptions?: string;
-  source: ParsedFood['source'];
+function servingLabelFrom(qty: number, unit: string, noun?: string): string {
+  if (unit !== 'count') return `${qty} ${unit}`;
+  const word = noun ? noun.replace(/s$/, '') : null;
+  if (word) return `${qty} ${word}`;
+  return qty === 1 ? '1 (whole thing)' : `${qty}`;
 }
 
-function toDraft(p: ParsedFood): Draft {
-  return {
-    name: p.name,
-    quantity: String(p.quantity),
-    unit: p.unit,
-    calories: String(p.calories),
-    proteinG: String(p.proteinG),
-    carbsG: String(p.carbsG),
-    fatG: String(p.fatG),
-    assumptions: p.assumptions,
-    source: p.source,
-  };
-}
-
-function fromDraft(d: Draft): ParsedFood {
-  const num = (s: string) => Math.max(0, parseFloat(s) || 0);
-  return {
-    name: d.name.trim(),
-    quantity: num(d.quantity) || 1,
-    unit: d.unit.trim() || 'count',
-    calories: num(d.calories),
-    proteinG: num(d.proteinG),
-    carbsG: num(d.carbsG),
-    fatG: num(d.fatG),
-    assumptions: d.assumptions,
-    source: d.source,
-  };
-}
-
-function formatAmount(p: ParsedFood): string {
-  const qty = Math.round(p.quantity * 10) / 10;
-  return p.unit === 'count' ? `${qty}×` : `${qty} ${p.unit}`;
+/** The four numbers, in the order the day is read in. Unknowns show as dashes
+ *  rather than zeros — the distinction this whole redesign turns on. */
+function MacroLine({ m }: { m: Macros }) {
+  return (
+    <span className="text-[12px] text-muted">
+      <span className="stat font-medium text-text">{showMacro(m.calories)}</span> cal
+      {' · '}
+      <span className="stat">{showMacro(m.proteinG)}</span>P{' '}
+      <span className="stat">{showMacro(m.carbsG)}</span>C{' '}
+      <span className="stat">{showMacro(m.fatG)}</span>F
+    </span>
+  );
 }
 
 export function FoodEntry({ dayKey }: { dayKey: string }) {
   const reduceMotion = useReducedMotion();
   const [text, setText] = useState('');
-  const [results, setResults] = useState<Resolution[]>([]);
-  const [asking, setAsking] = useState(false);
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [bucket, setBucket] = useState<MealBucket>(() => inferBucket());
-  const [error, setError] = useState<string | null>(null);
+  const [resolution, setResolution] = useState<Resolution | null>(null);
+  // Set the moment the user touches the label card. Until then the card is a
+  // live mirror of the text, which is what makes typing the facts and tapping
+  // them in the same gesture rather than two competing ones.
+  const [edited, setEdited] = useState<LabelDraft | null>(null);
   const [lastLog, setLastLog] = useState<{ entryId: string; label: string } | null>(null);
-  const hasKey = getApiKey() !== null;
-
-  // Warm the table chunk while the user is still deciding what to type, so the
-  // first search doesn't pay for the fetch.
-  useEffect(preloadFoodTable, []);
+  const [busy, setBusy] = useState(false);
 
   // --- live resolution ----------------------------------------------------
   // `seq` discards out-of-order responses: two keystrokes in flight can settle
@@ -125,21 +87,19 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
   useEffect(() => {
     const query = text.trim();
     if (!query) {
-      setResults([]);
+      setResolution(null);
       return;
     }
     const ticket = ++seq.current;
     const timer = setTimeout(() => {
-      resolveInstant(query)
+      resolveEntry(query)
         .then(found => {
-          if (seq.current === ticket) setResults(found);
+          if (seq.current === ticket) setResolution(found);
         })
         .catch(err => {
-          // This runs on every keystroke, so it can't raise a visible error —
-          // the composer just falls back to offering the AI tier. Anything that
-          // breaks here is a Dexie or chunk-load fault worth seeing in a log.
+          // Runs on every keystroke, so it can't raise a visible error.
           console.error('[FoodEntry] resolve failed', err);
-          if (seq.current === ticket) setResults([]);
+          if (seq.current === ticket) setResolution(null);
         });
     }, RESOLVE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
@@ -153,65 +113,83 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
 
   const reset = () => {
     setText('');
-    setResults([]);
-    setError(null);
+    setResolution(null);
+    setEdited(null);
     seq.current++;
   };
 
-  // --- logging ------------------------------------------------------------
+  // --- what's on screen ---------------------------------------------------
 
-  const logResolution = async (resolution: Resolution) => {
-    setError(null);
-    const entryId = resolution.libraryFood
-      ? // Straight from a library row: log the row as-is. Routing this through
-        // logParsedFood would re-derive per-serving facts from numbers that
-        // were themselves derived from it, and rewrite the row each time.
-        await logMeal({
-          food: resolution.libraryFood,
-          servings: resolution.libraryServings ?? 1,
-          bucket: inferBucket(),
-          dayKey,
-        })
-      : (await logParsedFood({ parsed: resolution.parsed, bucket: inferBucket(), dayKey }))
-          .entryId;
+  const input = resolution?.input;
+  const matches = resolution?.matches ?? [];
+  const isNewFood = Boolean(input?.name) && matches.length === 0 && !resolution?.problem;
 
-    setLastLog({
-      entryId,
-      label: `${resolution.parsed.name} · ${Math.round(resolution.parsed.calories)} kcal`,
-    });
-    reset();
+  // The card mirrors the text until the user edits it, then it owns itself.
+  // Typing in the box again hands control back, so the text stays the thing in
+  // charge and the card stays a refinement of it.
+  const draft: LabelDraft | null = edited ?? (isNewFood && input ? draftFromInput(input) : null);
+
+  const draftMacros: Macros = draft
+    ? {
+        calories: parseMacroField(draft.calories),
+        proteinG: parseMacroField(draft.proteinG),
+        carbsG: parseMacroField(draft.carbsG),
+        fatG: parseMacroField(draft.fatG),
+      }
+    : {};
+  const draftServings = draft ? Number(draft.servings) || 1 : 1;
+
+  const setDraft = (patch: Partial<LabelDraft>) => {
+    if (!draft) return;
+    setEdited({ ...draft, ...patch });
   };
 
-  const askAI = useCallback(async () => {
-    const query = text.trim();
-    if (!query || asking) return;
-    setError(null);
-    setAsking(true);
+  // --- actions ------------------------------------------------------------
+
+  const logMatch = async (match: Match) => {
+    setBusy(true);
     try {
-      const resolution = await resolveWithAI(query);
-      setDraft(toDraft(resolution.parsed));
-      setBucket(inferBucket());
-    } catch (err) {
-      setError(err instanceof ParseError ? err.message : 'Something went wrong — try again.');
+      const entryId = await logMeal({
+        food: match.food,
+        servings: match.servings,
+        dayKey,
+      });
+      setLastLog({ entryId, label: `${match.food.name} · ${showMacro(match.totals.calories)} kcal` });
+      reset();
     } finally {
-      setAsking(false);
+      setBusy(false);
     }
-  }, [text, asking]);
+  };
+
+  const saveDraft = async () => {
+    if (!draft || !draft.name.trim()) return;
+    setBusy(true);
+    try {
+      const qty = Number(draft.servingQty) || 1;
+      const { entryId } = await saveLabelAndLog({
+        label: {
+          name: draft.name.trim(),
+          servingQty: qty,
+          servingUnit: draft.servingUnit,
+          servingLabel: servingLabelFrom(qty, draft.servingUnit, draft.servingNoun),
+          macros: draftMacros,
+        },
+        servings: draftServings,
+        dayKey,
+        foodId: draft.foodId,
+      });
+      const total = scaleMacros(draftMacros, draftServings);
+      setLastLog({ entryId, label: `${draft.name.trim()} · ${showMacro(total.calories)} kcal` });
+      reset();
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleSubmit = () => {
-    if (!text.trim() || asking) return;
-    if (results.length) void logResolution(results[0]);
-    else void askAI();
-  };
-
-  const handleSaveDraft = async () => {
-    if (!draft) return;
-    const parsed = fromDraft(draft);
-    if (!parsed.name) return;
-    const { entryId } = await logParsedFood({ parsed, bucket, dayKey });
-    setLastLog({ entryId, label: `${parsed.name} · ${Math.round(parsed.calories)} kcal` });
-    setDraft(null);
-    reset();
+    if (busy) return;
+    if (draft) void saveDraft();
+    else if (matches.length) void logMatch(matches[0]);
   };
 
   const handleUndo = async () => {
@@ -220,102 +198,22 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
     setLastLog(null);
   };
 
-  // --- confirm card (AI results only) -------------------------------------
+  // --- render -------------------------------------------------------------
 
-  const suspicious = draft ? isMacroMathSuspicious(fromDraft(draft)) : false;
-
-  if (draft) {
-    const numField = (
-      labelText: string,
-      key: keyof Draft,
-      opts: { text?: boolean; span?: string } = {},
-    ) => (
-      <label className={cn('block', opts.span)}>
-        <span className="mb-1.5 block text-xs font-medium text-muted">{labelText}</span>
-        <input
-          type={opts.text ? 'text' : 'number'}
-          inputMode={opts.text ? 'text' : 'decimal'}
-          step="0.1"
-          value={(draft[key] as string) ?? ''}
-          onChange={e => setDraft({ ...draft, [key]: e.target.value })}
-          className={cn(field, !opts.text && 'stat')}
-        />
-      </label>
-    );
-
-    return (
-      <motion.div
-        initial={reduceMotion ? false : { opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-        className="rounded-lg border border-hairline bg-surface shadow-raised p-4 space-y-4"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <p className="font-display text-[15px] font-semibold tracking-[-0.015em] text-text">
-            Check before saving
-          </p>
-          <span className="flex shrink-0 items-center gap-1 rounded-full bg-accent-wash px-2 py-1 text-[11px] font-medium text-accent">
-            <Sparkles size={11} aria-hidden /> AI parsed
-          </span>
-        </div>
-
-        {draft.assumptions && (
-          <p className="text-xs leading-relaxed text-muted">{draft.assumptions}</p>
-        )}
-
-        {suspicious && (
-          <p
-            className="flex items-start gap-2 rounded-sm border border-warn/30 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn"
-            role="alert"
-          >
-            <TriangleAlert size={14} className="mt-px shrink-0" aria-hidden />
-            Calories don&apos;t match the macros — double-check these numbers.
-          </p>
-        )}
-
-        {/* Six columns: name and calories take the full row, amount/unit split
-            it, and the three macros sit in equal thirds. The old 4/1/1 top row
-            left "Unit" about 50px wide — too narrow to read "serving" in. */}
-        <div className="grid grid-cols-6 gap-2.5">
-          {numField('Name', 'name', { text: true, span: 'col-span-6' })}
-          {numField('Amount', 'quantity', { span: 'col-span-3' })}
-          {numField('Unit', 'unit', { text: true, span: 'col-span-3' })}
-          {numField('Calories', 'calories', { span: 'col-span-6' })}
-          {numField('Protein', 'proteinG', { span: 'col-span-2' })}
-          {numField('Carbs', 'carbsG', { span: 'col-span-2' })}
-          {numField('Fat', 'fatG', { span: 'col-span-2' })}
-        </div>
-
-        <Segmented
-          value={bucket}
-          onChange={setBucket}
-          options={BUCKET_OPTIONS}
-          ariaLabel="Meal"
-          itemClassName="capitalize"
-        />
-
-        <div className="flex gap-2">
-          <Button type="button" variant="ghost" className="flex-1" onClick={() => setDraft(null)}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="default"
-            className="flex-1"
-            onClick={handleSaveDraft}
-            disabled={!draft.name.trim()}
-          >
-            Log it
-          </Button>
-        </div>
-      </motion.div>
-    );
-  }
-
-  // --- composer -----------------------------------------------------------
-
-  const query = text.trim();
-  const showNoMatch = query.length > 0 && results.length === 0 && !asking;
+  const numField = (labelText: string, key: keyof LabelDraft, span?: string) => (
+    <label className={cn('block', span)}>
+      <span className="mb-1.5 block text-xs font-medium text-muted">{labelText}</span>
+      <input
+        type="number"
+        inputMode="decimal"
+        step="0.1"
+        placeholder="—"
+        value={(draft?.[key] as string) ?? ''}
+        onChange={e => setDraft({ [key]: e.target.value } as Partial<LabelDraft>)}
+        className={cn(field, 'stat')}
+      />
+    </label>
+  );
 
   return (
     <div className="space-y-2">
@@ -332,47 +230,46 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
         <input
           type="text"
           value={text}
-          onChange={e => setText(e.target.value)}
+          onChange={e => {
+            setText(e.target.value);
+            setEdited(null);
+          }}
           placeholder="What did you eat?"
-          aria-label="Describe what you ate"
+          aria-label="What did you eat"
           className="h-10 min-w-0 flex-1 bg-transparent text-[15px] text-text placeholder:text-faint focus:outline-none"
         />
         <button
           type="submit"
-          disabled={!query || asking}
-          aria-label={results.length ? 'Log it' : 'Estimate with AI'}
+          disabled={busy || (!draft && !matches.length)}
+          aria-label={draft ? 'Save and log' : 'Log it'}
           className={cn(
             'grid h-10 w-10 shrink-0 place-items-center rounded-full',
-            'bg-accent-solid text-on-accent',
-            'disabled:opacity-30',
+            'bg-accent-solid text-on-accent disabled:opacity-30',
             press,
-            // after `press` — see the note in button.tsx on transition merging
             'transition-[opacity,transform] duration-150 ease-out-soft',
             focusRing,
           )}
         >
-          {asking ? (
-            <Loader2 size={17} className="animate-spin" aria-hidden />
-          ) : (
-            <ArrowUp size={18} strokeWidth={2.4} aria-hidden />
-          )}
+          <ArrowUp size={18} strokeWidth={2.4} aria-hidden />
         </button>
       </form>
 
-      {results.length > 0 && (
+      {/* Known foods. The row states the amount it worked out BEFORE the
+          numbers it produced, because that's the step that can be wrong. */}
+      {matches.length > 0 && (
         <motion.ul
           initial={reduceMotion ? false : { opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
           className="overflow-hidden rounded-lg border border-hairline bg-surface shadow-card divide-y divide-hairline"
         >
-          {results.map((r, i) => (
-            <li key={`${r.tier}-${r.parsed.name}-${i}`}>
+          {matches.map((m, i) => (
+            <li key={m.food.id} className="flex items-stretch">
               <button
                 type="button"
-                onClick={() => void logResolution(r)}
+                onClick={() => void logMatch(m)}
                 className={cn(
-                  'flex w-full items-center gap-3 px-4 py-3 text-left',
+                  'flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left',
                   '[@media(hover:hover)]:hover:bg-surface-2',
                   press,
                   'transition-[background-color,transform] duration-150 ease-out-soft',
@@ -381,34 +278,14 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[14px] font-medium text-text">
-                    {r.parsed.name}
+                    {m.food.name}
                   </span>
-                  <span className="mt-0.5 block truncate text-[12px] text-muted">
-                    <span className="stat">{formatAmount(r.parsed)}</span>
-                    {' · '}
-                    <span className="stat">{Math.round(r.parsed.proteinG)}</span>P{' '}
-                    <span className="stat">{Math.round(r.parsed.carbsG)}</span>C{' '}
-                    <span className="stat">{Math.round(r.parsed.fatG)}</span>F
-                    {' · '}
-                    {TIER_LABEL[r.tier]}
+                  <span className="mt-0.5 block truncate">
+                    <span className="stat text-[12px] text-muted">{m.amountLabel}</span>
+                    <span className="text-[12px] text-faint"> · </span>
+                    <MacroLine m={m.totals} />
                   </span>
                 </span>
-                {/* The macros carry their P/C/F letters, so a bare bold figure
-                    beside them reads as one more unlabelled quantity. It's the
-                    number the whole row is about — it gets its unit. */}
-                <span className="shrink-0 text-[15px] font-semibold text-text">
-                  <span className="stat">{Math.round(r.parsed.calories)}</span>
-                  <span className="ml-1 text-[11px] font-medium text-muted">kcal</span>
-                </span>
-                {/* The list is now short by construction — your own foods, plus
-                    at most one table row — so the top entry is what Enter will
-                    log rather than the first of six near-identical guesses.
-                    Saying so turns the list from a decision into a receipt.
-
-                    Rendered on every row and merely made invisible below the
-                    first: showing it only on row 1 indented that row's calorie
-                    figure by the badge's width and broke the numeric column the
-                    list is meant to be scanned down. */}
                 <span
                   aria-hidden
                   className={cn(
@@ -420,49 +297,138 @@ export function FoodEntry({ dayKey }: { dayKey: string }) {
                   ↵
                 </span>
               </button>
+              {/* Correcting a food you already have is the same card as creating
+                  one — there is only one way facts ever get into a row. */}
+              <button
+                type="button"
+                aria-label={`Edit ${m.food.name}`}
+                onClick={() => input && setEdited(draftFromInput(input, m.food))}
+                className={cn(
+                  'grid w-11 shrink-0 place-items-center border-l border-hairline text-faint',
+                  '[@media(hover:hover)]:hover:text-muted',
+                  press,
+                  focusRing,
+                )}
+              >
+                <Pencil size={13} aria-hidden />
+              </button>
             </li>
           ))}
         </motion.ul>
       )}
 
-      {showNoMatch && (
-        <div className="rounded-lg border border-hairline bg-surface px-4 py-3 shadow-card">
-          {hasKey ? (
-            <button
-              type="button"
-              onClick={() => void askAI()}
-              className={cn(
-                '-mx-1 flex w-[calc(100%+0.5rem)] items-center gap-2 rounded-sm px-1 py-0.5 text-left',
-                focusRing,
-              )}
-            >
-              <Sparkles size={13} className="shrink-0 text-accent" aria-hidden />
-              <span className="text-[13px] text-muted">
-                No match — <span className="font-medium text-text">estimate with AI</span>
-              </span>
-            </button>
-          ) : (
-            <p className="text-[13px] leading-relaxed text-muted">
-              No match. Add the facts to log it now —{' '}
-              <span className="stat text-text">250g 30p 10c 5f</span> — or add an API key in
-              Settings to estimate unknown foods.
-            </p>
-          )}
-          {/* The one moment the format reference is actually wanted: you typed
-              something, nothing matched, and the fix is knowing what to type. */}
-          <Link
-            to="/help"
-            className="mt-1.5 inline-block text-[12.5px] text-faint [@media(hover:hover)]:hover:text-muted"
-          >
-            See the entry format
-          </Link>
-        </div>
+      {/* A name matched but the amount couldn't be applied to it. Refusing with
+          a reason beats logging "your usual" and saying nothing. */}
+      {resolution?.problem && !draft && (
+        <p
+          className="flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2.5 text-[13px] leading-relaxed text-warn"
+          role="alert"
+        >
+          <TriangleAlert size={14} className="mt-0.5 shrink-0" aria-hidden />
+          {resolution.problem}
+        </p>
       )}
 
-      {error && (
-        <p className="px-1 text-xs text-danger" role="alert">
-          {error}
-        </p>
+      {/* The label card. Shown for a food the app doesn't know, prefilled with
+          anything the text already said, and never shown again for that name. */}
+      {draft && (
+        <motion.div
+          initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+          className="rounded-lg border border-hairline bg-surface shadow-raised p-4 space-y-4"
+        >
+          <div>
+            <p className="font-display text-[15px] font-semibold tracking-[-0.015em] text-text">
+              {draft.foodId ? 'Edit this food' : 'New food'}
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted">
+              What's on the label for one serving? Leave anything you don't know
+              blank — blank means unknown, and nothing gets guessed from it.
+            </p>
+          </div>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-muted">Name</span>
+            <input
+              type="text"
+              value={draft.name}
+              onChange={e => setDraft({ name: e.target.value })}
+              className={field}
+            />
+          </label>
+
+          <div>
+            <span className="mb-1.5 block text-xs font-medium text-muted">One serving is</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.1"
+                value={draft.servingQty}
+                onChange={e => setDraft({ servingQty: e.target.value })}
+                className={cn(field, 'stat w-20 shrink-0')}
+              />
+              <div className="min-w-0 flex-1">
+                <Segmented
+                  value={draft.servingUnit}
+                  onChange={v => setDraft({ servingUnit: v })}
+                  options={UNIT_OPTIONS}
+                  ariaLabel="Serving unit"
+                />
+              </div>
+            </div>
+            <p className="mt-1.5 text-[11.5px] text-faint">
+              {servingLabelFrom(Number(draft.servingQty) || 1, draft.servingUnit, draft.servingNoun)}
+              {draft.servingUnit === 'count' &&
+                ' — a whole meal, a packet, a bar: whatever one of these is.'}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-6 gap-2.5">
+            {numField('Calories', 'calories', 'col-span-6')}
+            {numField('Protein', 'proteinG', 'col-span-2')}
+            {numField('Carbs', 'carbsG', 'col-span-2')}
+            {numField('Fat', 'fatG', 'col-span-2')}
+          </div>
+
+          <div className="flex items-center gap-3 rounded-sm bg-surface-2 px-3 py-2.5">
+            <label className="flex shrink-0 items-center gap-2">
+              <span className="text-xs font-medium text-muted">I had</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.1"
+                value={draft.servings}
+                onChange={e => setDraft({ servings: e.target.value })}
+                className={cn(field, 'stat w-16')}
+              />
+            </label>
+            <span className="min-w-0 flex-1 text-right">
+              <MacroLine m={scaleMacros(draftMacros, draftServings)} />
+            </span>
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              className="flex-1"
+              onClick={() => (edited ? setEdited(null) : reset())}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="default"
+              className="flex-1"
+              onClick={() => void saveDraft()}
+              disabled={busy || !draft.name.trim()}
+            >
+              Save &amp; log
+            </Button>
+          </div>
+        </motion.div>
       )}
 
       {lastLog && (

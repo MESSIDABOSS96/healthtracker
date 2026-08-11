@@ -44,26 +44,25 @@ const FOOD_FIXTURES: Array<{
   proteinG: number;
   carbsG: number;
   fatG: number;
-  buckets: Array<MealEntry['bucket']>;
   /** Relative pick weight — higher shows up more, which drives Frequent. */
   weight: number;
 }> = [
-  { name: 'Greek yogurt', servingLabel: '170 g', servingQty: 170, servingUnit: 'g', calories: 100, proteinG: 17, carbsG: 6, fatG: 0.7, buckets: ['breakfast', 'snack'], weight: 9 },
-  { name: 'Oatmeal', servingLabel: '80 g dry', servingQty: 80, servingUnit: 'g', calories: 303, proteinG: 10.5, carbsG: 54, fatG: 5.4, buckets: ['breakfast'], weight: 8 },
-  { name: 'Banana', servingLabel: '1 medium', servingQty: 1, servingUnit: 'count', calories: 105, proteinG: 1.3, carbsG: 27, fatG: 0.4, buckets: ['breakfast', 'snack'], weight: 7 },
-  { name: 'Whole eggs', servingLabel: '1 large', servingQty: 1, servingUnit: 'count', calories: 72, proteinG: 6.3, carbsG: 0.4, fatG: 4.8, buckets: ['breakfast'], weight: 8 },
-  { name: 'Chicken breast', servingLabel: '100 g', servingQty: 100, servingUnit: 'g', calories: 165, proteinG: 31, carbsG: 0, fatG: 3.6, buckets: ['lunch', 'dinner'], weight: 12 },
-  { name: 'White rice', servingLabel: '100 g cooked', servingQty: 100, servingUnit: 'g', calories: 130, proteinG: 2.7, carbsG: 28, fatG: 0.3, buckets: ['lunch', 'dinner'], weight: 10 },
-  { name: 'Ground beef 90/10', servingLabel: '113 g', servingQty: 113, servingUnit: 'g', calories: 199, proteinG: 22.6, carbsG: 0, fatG: 11.3, buckets: ['dinner'], weight: 6 },
-  { name: 'Salmon fillet', servingLabel: '140 g', servingQty: 140, servingUnit: 'g', calories: 291, proteinG: 39, carbsG: 0, fatG: 13, buckets: ['dinner'], weight: 4 },
-  { name: 'Sweet potato', servingLabel: '150 g', servingQty: 150, servingUnit: 'g', calories: 129, proteinG: 2.4, carbsG: 30, fatG: 0.2, buckets: ['lunch', 'dinner'], weight: 5 },
-  { name: 'Broccoli', servingLabel: '150 g', servingQty: 150, servingUnit: 'g', calories: 51, proteinG: 4.2, carbsG: 10, fatG: 0.5, buckets: ['lunch', 'dinner'], weight: 6 },
-  { name: 'Olive oil', servingLabel: '1 tbsp', servingQty: 1, servingUnit: 'count', calories: 119, proteinG: 0, carbsG: 0, fatG: 13.5, buckets: ['lunch', 'dinner'], weight: 6 },
-  { name: 'Whey protein', servingLabel: '1 scoop', servingQty: 1, servingUnit: 'count', calories: 120, proteinG: 24, carbsG: 3, fatG: 1.5, buckets: ['snack'], weight: 9 },
-  { name: 'Almonds', servingLabel: '28 g', servingQty: 28, servingUnit: 'g', calories: 164, proteinG: 6, carbsG: 6.1, fatG: 14.2, buckets: ['snack'], weight: 5 },
-  { name: 'Protein bar', servingLabel: '1 bar', servingQty: 1, servingUnit: 'count', calories: 210, proteinG: 20, carbsG: 23, fatG: 7, buckets: ['snack'], weight: 4 },
-  { name: 'Burrito bowl', servingLabel: '1 bowl', servingQty: 1, servingUnit: 'count', calories: 720, proteinG: 42, carbsG: 78, fatG: 25, buckets: ['lunch', 'dinner'], weight: 3 },
-  { name: 'Pizza slice', servingLabel: '1 slice', servingQty: 1, servingUnit: 'count', calories: 285, proteinG: 12, carbsG: 36, fatG: 10, buckets: ['dinner'], weight: 2 },
+  { name: 'Greek yogurt', servingLabel: '170 g', servingQty: 170, servingUnit: 'g', calories: 100, proteinG: 17, carbsG: 6, fatG: 0.7, weight: 9 },
+  { name: 'Oatmeal', servingLabel: '80 g dry', servingQty: 80, servingUnit: 'g', calories: 303, proteinG: 10.5, carbsG: 54, fatG: 5.4, weight: 8 },
+  { name: 'Banana', servingLabel: '1 medium', servingQty: 1, servingUnit: 'count', calories: 105, proteinG: 1.3, carbsG: 27, fatG: 0.4, weight: 7 },
+  { name: 'Whole eggs', servingLabel: '1 large', servingQty: 1, servingUnit: 'count', calories: 72, proteinG: 6.3, carbsG: 0.4, fatG: 4.8, weight: 8 },
+  { name: 'Chicken breast', servingLabel: '100 g', servingQty: 100, servingUnit: 'g', calories: 165, proteinG: 31, carbsG: 0, fatG: 3.6, weight: 12 },
+  { name: 'White rice', servingLabel: '100 g cooked', servingQty: 100, servingUnit: 'g', calories: 130, proteinG: 2.7, carbsG: 28, fatG: 0.3, weight: 10 },
+  { name: 'Ground beef 90/10', servingLabel: '113 g', servingQty: 113, servingUnit: 'g', calories: 199, proteinG: 22.6, carbsG: 0, fatG: 11.3, weight: 6 },
+  { name: 'Salmon fillet', servingLabel: '140 g', servingQty: 140, servingUnit: 'g', calories: 291, proteinG: 39, carbsG: 0, fatG: 13, weight: 4 },
+  { name: 'Sweet potato', servingLabel: '150 g', servingQty: 150, servingUnit: 'g', calories: 129, proteinG: 2.4, carbsG: 30, fatG: 0.2, weight: 5 },
+  { name: 'Broccoli', servingLabel: '150 g', servingQty: 150, servingUnit: 'g', calories: 51, proteinG: 4.2, carbsG: 10, fatG: 0.5, weight: 6 },
+  { name: 'Olive oil', servingLabel: '1 tbsp', servingQty: 1, servingUnit: 'count', calories: 119, proteinG: 0, carbsG: 0, fatG: 13.5, weight: 6 },
+  { name: 'Whey protein', servingLabel: '1 scoop', servingQty: 1, servingUnit: 'count', calories: 120, proteinG: 24, carbsG: 3, fatG: 1.5, weight: 9 },
+  { name: 'Almonds', servingLabel: '28 g', servingQty: 28, servingUnit: 'g', calories: 164, proteinG: 6, carbsG: 6.1, fatG: 14.2, weight: 5 },
+  { name: 'Protein bar', servingLabel: '1 bar', servingQty: 1, servingUnit: 'count', calories: 210, proteinG: 20, carbsG: 23, fatG: 7, weight: 4 },
+  { name: 'Burrito bowl', servingLabel: '1 bowl', servingQty: 1, servingUnit: 'count', calories: 720, proteinG: 42, carbsG: 78, fatG: 25, weight: 3 },
+  { name: 'Pizza slice', servingLabel: '1 slice', servingQty: 1, servingUnit: 'count', calories: 285, proteinG: 12, carbsG: 36, fatG: 10, weight: 2 },
 ];
 
 function pickWeighted<T extends { weight: number }>(items: T[], rng: () => number): T {
@@ -152,9 +151,7 @@ export async function seedDemo(todayKey: string): Promise<void> {
       const count = 3 + Math.floor(rng() * 3);
       for (let m = 0; m < count; m++) {
         const fixtureIndex = FOOD_FIXTURES.indexOf(pickWeighted(FOOD_FIXTURES, rng));
-        const fixture = FOOD_FIXTURES[fixtureIndex];
         const food = foods[fixtureIndex];
-        const bucket = fixture.buckets[Math.floor(rng() * fixture.buckets.length)];
         const servings = Math.round((0.75 + rng() * 1.6) * 4) / 4; // quarter-serving steps
         const loggedAt = dayStartMs + (7 + m * 3.5) * 3_600_000;
 
@@ -163,12 +160,11 @@ export async function seedDemo(todayKey: string): Promise<void> {
           dayKey,
           foodId: food.id,
           servings,
-          bucket,
           loggedAt,
-          computedCalories: Math.round(food.calories * servings * 10) / 10,
-          computedProteinG: Math.round(food.proteinG * servings * 10) / 10,
-          computedCarbsG: Math.round(food.carbsG * servings * 10) / 10,
-          computedFatG: Math.round(food.fatG * servings * 10) / 10,
+          computedCalories: Math.round((food.calories ?? 0) * servings * 10) / 10,
+          computedProteinG: Math.round((food.proteinG ?? 0) * servings * 10) / 10,
+          computedCarbsG: Math.round((food.carbsG ?? 0) * servings * 10) / 10,
+          computedFatG: Math.round((food.fatG ?? 0) * servings * 10) / 10,
         });
 
         food.usageCount += 1;

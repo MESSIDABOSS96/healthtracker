@@ -6,7 +6,6 @@ import { SettingsCard } from '@/features/settings/SettingsCard';
 import { GoalsForm } from '@/features/settings/GoalsForm';
 import { LongTermGoalsForm } from '@/features/settings/LongTermGoalsForm';
 import { AppearanceCard } from '@/features/settings/AppearanceCard';
-import { ApiKeyCard } from '@/features/settings/ApiKeyCard';
 import { ExportCard } from '@/features/settings/ExportCard';
 import { ImportCard } from '@/features/settings/ImportCard';
 import { ViewportDiagnostics } from '@/features/settings/ViewportDiagnostics';
@@ -71,7 +70,6 @@ export function SettingsScreen() {
 
         <LongTermGoalsForm />
 
-        <ApiKeyCard />
 
         {/* Sits beside the AI card because both are about getting food INTO the
             app. It isn't a setting, so it doesn't belong up with the goals —

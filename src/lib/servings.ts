@@ -1,76 +1,64 @@
 // src/lib/servings.ts
-// How much of a library food the typed text asks for.
+// How many servings of a known food the typed amount asks for.
 //
-// A library row stores its facts against a serving — either "100 g" (anything
-// the app measured by weight) or "1 item" (anything it counted). The text can
-// name an amount in a unit that doesn't match, and the interesting part is that
-// the two mismatches are NOT symmetrical:
+// Every food stores its numbers against one serving — "100 g", "1 packet",
+// "1 (whole thing)". A log is that serving times a count, and this is the one
+// place that count is worked out. Three cases, and only one of them is
+// interesting:
 //
-//   "2 egg"          count  → weight-based row : answerable. Nothing here knows
-//                    what one egg weighs, but the app knows what you logged
-//                    last time, and two of your usual portion is exactly what
-//                    "2 egg" means to the person typing it.
-//   "protein bar 60g" weight → item-based row  : not answerable. There is no
-//                    honest conversion from grams to items without an item
-//                    weight, and inventing one writes a wrong number silently.
+//   nothing typed        → 1 serving. "chipotle bowl" is one bowl.
+//   a bare number        → that many servings. "chicken breast 1.5", "welchs 2".
+//                          Works whatever the serving is, because "1.5" is
+//                          stated in servings by definition.
+//   a weight             → divide by the serving weight. "chicken breast 150g"
+//                          against a 100 g serving is 1.5 — the division the
+//                          user would otherwise do on a phone calculator.
 //
-// The rule that falls out: A LIBRARY ROW IS ONLY OFFERED WHEN IT CAN HONOUR THE
-// AMOUNT THAT WAS TYPED. The unanswerable case returns null and the resolver
-// drops the candidate, so the tier below — the USDA table, which is per-100g
-// and can answer it exactly — gets the question instead.
-//
-// That replaces the old behaviour, which was to quietly fall back to "your
-// usual" whenever the units didn't line up. Typing `2 egg` logged ONE egg, and
-// nothing on screen said the 2 had been discarded. Worse, it only did that
-// after the food reached your library: before then, `2 eggs` resolved off the
-// table and was correct. The app got less trustworthy the more you used it.
+// The one thing that CANNOT be answered is a weight against a serving measured
+// in items: nothing here knows what one packet of fruit snacks weighs, and
+// there is no honest conversion without it. That returns a refusal carrying its
+// own explanation rather than a number, because the alternative — quietly
+// logging "your usual" whenever the units didn't line up — is what used to make
+// `2 egg` log ONE egg with nothing on screen saying the 2 had been discarded.
 
-import type { FoodUnit } from './foodQuery';
+import type { Amount } from './foodQuery';
 
 export interface ServingBasis {
-  /** How much one serving is — 100 for a per-100g row, 1 for a per-item row. */
-  servingQty: number;
+  /** How much one serving is. 100 for a per-100g food, 1 for a per-item one. */
+  servingQty?: number;
   /** 'g' | 'ml' | 'count'. */
-  servingUnit: string;
-  /** What this food was logged as last time: the app's answer to "the usual". */
-  lastServings?: number;
+  servingUnit?: string;
 }
 
-export interface AmountQuery {
-  quantity?: number;
-  unit?: FoodUnit;
-  multiplier?: number;
+export type ServingsResult =
+  | { ok: true; servings: number }
+  | { ok: false; reason: string };
+
+export function servingsFor(amount: Amount | undefined, basis: ServingBasis): ServingsResult {
+  const qty = basis.servingQty && basis.servingQty > 0 ? basis.servingQty : 1;
+  const unit = basis.servingUnit ?? 'count';
+
+  if (!amount) return { ok: true, servings: 1 };
+
+  // A bare count is already stated in servings, whatever a serving happens to be.
+  if (amount.unit === 'count') return positive(amount.value);
+
+  if (amount.unit === unit) return positive(amount.value / qty);
+
+  return {
+    ok: false,
+    reason: `This is measured per ${qty === 1 ? '' : `${qty} `}${labelUnit(unit, qty)} — say how many, not a weight.`,
+  };
 }
 
-/**
- * Servings of `basis` that `q` describes, or null when this food cannot express
- * the amount typed.
- */
-export function libraryServings(q: AmountQuery, basis: ServingBasis): number | null {
-  const { servingQty, servingUnit } = basis;
-  const usual = basis.lastServings && basis.lastServings > 0 ? basis.lastServings : 1;
-  const multiplier = q.multiplier ?? 1;
+function labelUnit(unit: string, qty: number): string {
+  if (unit === 'count') return qty === 1 ? 'item' : 'items';
+  return unit;
+}
 
-  // No amount named — re-log whatever it was last time, which is the same
-  // semantics as tapping its quick-log chip. A bare multiplier scales that:
-  // "protein shake x2" is two of your usual shake.
-  if (q.quantity === undefined) return positive(usual * multiplier, usual);
-
-  // Same unit: straight division. 200g against a per-100g row is 2 servings,
-  // and 2 against a per-item row is 2.
-  if (q.unit === servingUnit && servingQty > 0) {
-    return positive(q.quantity / servingQty, usual);
+function positive(value: number): ServingsResult {
+  if (!Number.isFinite(value) || value <= 0) {
+    return { ok: false, reason: "That amount doesn't work out to anything." };
   }
-
-  // A count against a food measured by weight: N of your usual portion. Note
-  // the quantity has already absorbed any multiplier upstream (parseFoodQuery
-  // pre-multiplies it), so folding one in again here would double-count.
-  if (q.unit === 'count') return positive(usual * q.quantity, usual);
-
-  return null;
-}
-
-/** Keep a computed amount sane without ever silently logging zero. */
-function positive(value: number, fallback: number): number {
-  return Number.isFinite(value) && value > 0 ? value : fallback;
+  return { ok: true, servings: Math.round(value * 1000) / 1000 };
 }

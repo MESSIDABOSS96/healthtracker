@@ -1,267 +1,196 @@
 // src/services/resolve.svc.ts
-// The food resolver — one entry point that turns typed text into nutrition,
-// routed by what the text actually contains rather than by what's configured.
+// Turning typed text into something loggable.
 //
-//   facts in the text   → arithmetic          calculator   ~0ms
-//   name you've logged  → your own library    library      ~0ms
-//   name we know        → bundled USDA table  table        ~0ms
-//   none of the above   → language model      ai           1-3s
+// This used to be a four-tier cascade — your library, then a bundled 6k-row
+// USDA table, then a language model — ordered by how determined the answer
+// already was. All of that is gone. The app now knows exactly one source of
+// nutrition facts: foods you have entered yourself. Nothing is looked up,
+// estimated, or generated.
 //
-// The tiers are ordered by how much the answer is ALREADY DETERMINED. Explicit
-// numbers off a label beat a database; a food the user has personally confirmed
-// beats a generic average; a fixed table beats a model that returns 109 kcal
-// for a banana today and 105 tomorrow. That last point is the accuracy argument
-// as much as the speed one — a tracker whose numbers drift between identical
-// meals can't show a real trend.
+// What that buys is the property the tiers kept undermining: EVERY NUMBER ON
+// SCREEN CAME FROM YOU. A tracker whose figures shift between identical meals
+// can't show a real trend, and a tier that silently answers a question you
+// didn't quite ask (a table row for a food you'd already weighed, a model
+// estimate for a name it half-recognised) is indistinguishable from one that
+// answered correctly. The cost is real and worth stating: the first time you
+// eat a banana, you type its numbers. Every time after, its name is enough.
 //
-// TRANSACTION RULE (CLAUDE.md #1): resolveWithAI performs a network fetch. It
-// must complete before any Dexie write begins — never call it inside a
-// db.transaction.
+// So there are only two outcomes here — the app knows this food, or it asks.
 
 import { db } from '@/db/db';
 import type { Food } from '@/db/schema';
 import { normalizeFoodName } from '@/lib/normalizeFoodName';
-import { basisScale, parseFoodQuery, type FoodQuery } from '@/lib/foodQuery';
-import { libraryServings } from '@/lib/servings';
+import { parseFoodInput, servingLabel, type FoodInput } from '@/lib/foodQuery';
+import { scaleMacros, type Macros } from '@/lib/macros';
+import { servingsFor } from '@/lib/servings';
 import { stemWords } from '@/lib/stem';
-import { getLastServingsForFood } from './meals.svc';
-import { searchFoodTable, type TableFood } from './foodTable.svc';
-import { parseFood, type ParsedFood } from './parse.svc';
 
-export type ResolveTier = 'calculator' | 'library' | 'table' | 'ai';
+export interface Match {
+  food: Food;
+  /** How many servings the typed amount works out to. */
+  servings: number;
+  /** The food's per-serving macros scaled by `servings`. Unknowns stay unknown. */
+  totals: Macros;
+  /** "1.5 × 100 g" — what is about to be logged, in words. */
+  amountLabel: string;
+}
 
 export interface Resolution {
-  tier: ResolveTier;
-  parsed: ParsedFood;
+  input: FoodInput;
+  /** Foods whose name matches, best first. Empty means the app doesn't know it. */
+  matches: Match[];
   /**
-   * Set when the answer came straight off a library row. The UI logs these via
-   * logMeal rather than logParsedFood, so a re-log doesn't rewrite the row's
-   * stored facts with numbers derived back out of them.
+   * Set when a name matched but the amount couldn't be applied to it — a weight
+   * against a food measured in packets. Carries its own explanation.
    */
-  libraryFood?: Food;
-  libraryServings?: number;
+  problem?: string;
 }
 
-/** Tiers whose answer is arithmetic on known values — no model, no guessing. */
-export function isDeterministic(tier: ResolveTier): boolean {
-  return tier !== 'ai';
+const foodServingLabel = (food: Food): string => {
+  const qty = food.servingQty ?? 1;
+  const unit = food.servingUnit ?? 'count';
+  if (unit === 'count') return food.servingLabel || (qty === 1 ? '1 (whole thing)' : `${qty}`);
+  return `${qty} ${unit}`;
+};
+
+/** "1.5 × 100 g" / "2 × 1 packet" — always count first, then what one is. */
+export function amountLabelFor(food: Food, servings: number): string {
+  const rounded = Math.round(servings * 100) / 100;
+  return `${rounded} × ${foodServingLabel(food)}`;
 }
-
-const round1 = (n: number) => Math.round(n * 10) / 10;
-
-// ---------------------------------------------------------------------------
-// Calculator — the text carried its own numbers
-// ---------------------------------------------------------------------------
-
-function fromCalculator(q: FoodQuery): Resolution {
-  const scale = basisScale(q);
-  const proteinG = round1((q.proteinG ?? 0) * scale);
-  const carbsG = round1((q.carbsG ?? 0) * scale);
-  const fatG = round1((q.fatG ?? 0) * scale);
-  // Derive calories from the macros when the label didn't state them — that's
-  // the 4/4/9 arithmetic the user would otherwise do on a phone calculator.
-  const calories =
-    q.calories !== undefined
-      ? round1(q.calories * scale)
-      : round1(4 * proteinG + 4 * carbsG + 9 * fatG);
-
-  return {
-    tier: 'calculator',
-    parsed: {
-      name: q.name || 'Food',
-      // "protein bar 210cal 20p 22c 7f x2" names no amount, so the multiplier
-      // IS the amount: two bars, not one bar with doubled macros.
-      quantity: q.quantity ?? q.multiplier ?? 1,
-      unit: q.unit ?? 'count',
-      calories,
-      proteinG,
-      carbsG,
-      fatG,
-      source: 'local',
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Library — a food this user has already confirmed
-// ---------------------------------------------------------------------------
 
 /**
  * Every word you typed has to appear in the name, in any order — "chicken"
  * finds both "Chicken breast, Tesco" and "Tesco chicken breast", and "tesco
  * chicken" narrows to the one.
  *
- * Both sides go through the same stemmer the bundled table's search uses, so
- * plurals stop deciding which tier answers. Before that, `egg` matched your own
- * confirmed row and `eggs` fell through to the USDA table — same food, two
- * different sets of numbers, one letter apart.
+ * Both sides go through the same stemmer, so plurals stop deciding whether a
+ * food is found: `egg` and `eggs` must reach the same row, or the app appears
+ * to forget a food one letter at a time.
  *
- * The old prefix-only match answered a different question. It could only find
- * names that STARTED with what you typed, which quietly failed the case this
- * tier exists for: you weigh two different chicken breasts once each, and from
- * then on neither comes back unless you retype its first word exactly. Note
- * that the dedupe key's refusal to fuzzy-match is NOT the same rule — that one
- * guards an automatic merge, where a false positive silently corrupts a food's
- * stored facts. Here nothing merges and nothing is written; the candidates are
- * shown and you pick. Being generous costs a row on screen, not your data.
- *
- * A personal library is a few hundred rows at most, so this scans rather than
+ * A personal food list is a few hundred rows at most, so this scans rather than
  * hunting an index. Hidden-from-chips foods deliberately still resolve —
  * dismissing a chip tidies the shortcut row, it doesn't retire the food.
  */
-async function fromLibrary(q: FoodQuery): Promise<Resolution[]> {
-  const normalized = normalizeFoodName(q.name);
+async function matchByName(name: string): Promise<Food[]> {
+  const normalized = normalizeFoodName(name);
   if (!normalized) return [];
   const queryTokens = stemWords(normalized);
   if (!queryTokens.length) return [];
 
   const all = await db.foods.toArray();
-  const foods = all.filter(f => {
+  const found = all.filter(f => {
     const nameTokens = stemWords(f.normalizedName);
     return queryTokens.every(qt => nameTokens.some(nt => nt.startsWith(qt)));
   });
-  if (!foods.length) return [];
 
-  // An exact name match is the one you meant; past that, most-used first —
-  // with two people eating the same twelve things, frequency beats alphabetical.
-  foods.sort((a, b) => {
+  // An exact name match is the one you meant; past that, most-used first — with
+  // a handful of foods in heavy rotation, frequency beats alphabetical.
+  found.sort((a, b) => {
     const exact = Number(b.normalizedName === normalized) - Number(a.normalizedName === normalized);
     return exact || (b.usageCount ?? 0) - (a.usageCount ?? 0);
   });
-
-  const resolutions = await Promise.all(foods.slice(0, 5).map(food => toLibraryResolution(food, q)));
-  // Nulls are foods that can't express the amount that was typed — see
-  // lib/servings.ts. Dropping them hands the question to the table tier rather
-  // than answering it with a number the user didn't ask for.
-  return resolutions.filter((r): r is Resolution => r !== null);
-}
-
-async function toLibraryResolution(food: Food, q: FoodQuery): Promise<Resolution | null> {
-  const servingQty = food.servingQty ?? 1;
-  const servingUnit = food.servingUnit ?? 'count';
-
-  // Fetched even when the typed amount answers on its own: it's a single
-  // indexed read against a personal-sized table, and threading a lazy getter
-  // through would buy microseconds at the cost of the rule being readable in
-  // one place.
-  const lastServings = await getLastServingsForFood(food.id);
-  const servings = libraryServings(q, { servingQty, servingUnit, lastServings });
-  if (servings === null) return null;
-
-  return {
-    tier: 'library',
-    libraryFood: food,
-    libraryServings: servings,
-    parsed: {
-      name: food.name,
-      quantity: round1(servingQty * servings),
-      unit: servingUnit,
-      calories: round1(food.calories * servings),
-      proteinG: round1(food.proteinG * servings),
-      carbsG: round1(food.carbsG * servings),
-      fatG: round1(food.fatG * servings),
-      source: 'local',
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Table — the bundled USDA data, per 100g
-// ---------------------------------------------------------------------------
-
-function fromTable(entry: TableFood, q: FoodQuery): Resolution | null {
-  let grams: number;
-  if (q.unit === 'g' || q.unit === 'ml') {
-    grams = q.quantity ?? 100;
-  } else if (q.unit === 'count') {
-    // "2 eggs" only resolves if the table knows what one egg weighs.
-    if (!entry.portionGrams) return null;
-    grams = entry.portionGrams * (q.quantity ?? 1);
-  } else {
-    // No amount given: one typical portion if there is one, else 100g — times
-    // any bare multiplier, so "banana x2" is two bananas.
-    grams = (entry.portionGrams ?? 100) * (q.multiplier ?? 1);
-  }
-  if (!(grams > 0)) return null;
-
-  const scale = grams / 100;
-  const count = q.multiplier ?? 1;
-  const assumption =
-    q.quantity === undefined && entry.portionGrams
-      ? `Assumed ${count === 1 ? 'one' : count} × ${entry.portionLabel ?? 'portion'} (${entry.portionGrams}g each).`
-      : q.quantity === undefined
-        ? `Assumed ${round1(grams)}g — set the amount if that's not right.`
-        : undefined;
-
-  return {
-    tier: 'table',
-    parsed: {
-      name: entry.name,
-      quantity: round1(grams),
-      unit: 'g',
-      calories: round1(entry.calories * scale),
-      proteinG: round1(entry.proteinG * scale),
-      carbsG: round1(entry.carbsG * scale),
-      fatG: round1(entry.fatG * scale),
-      assumptions: assumption,
-      source: 'table',
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Entry points
-// ---------------------------------------------------------------------------
-
-/**
- * Everything that can be answered without a network call, ranked. Safe to call
- * on every keystroke — it touches Dexie and an in-memory index, nothing else.
- * An empty array means only the model can answer this one.
- */
-export async function resolveInstant(text: string): Promise<Resolution[]> {
-  const q = parseFoodQuery(text);
-  if (!q.raw) return [];
-
-  // Explicit numbers win outright. Someone reading a label off a packet has
-  // better information than any database, and second-guessing them with a
-  // lookup would be actively wrong.
-  if (q.hasFacts) return [fromCalculator(q)];
-  if (!q.name) return [];
-
-  const [library, table] = await Promise.all([
-    fromLibrary(q),
-    searchFoodTable(q.name, 6).catch(() => [] as TableFood[]),
-  ]);
-
-  const results = [...library];
-  const seen = new Set(library.map(r => normalizeFoodName(r.parsed.name)));
-
-  // The table contributes ONE row, not six. Its runners-up are near-duplicates
-  // of the winner — typing "egg" offered chicken, duck, goose, quail and turkey,
-  // which is a taxonomy quiz standing between the user and logging breakfast.
-  // Library hits are the opposite case and are all kept: those are foods this
-  // user weighed and confirmed, so two entries for "chicken" are two real
-  // options they need to choose between, not noise.
-  //
-  // Still SEARCHED six deep, because fromTable rejects entries it can't answer
-  // the question with — a count like "2 eggs" needs a known portion weight, and
-  // the best-named row doesn't always carry one. The next candidate is a better
-  // answer than no answer.
-  for (const entry of table) {
-    const resolution = fromTable(entry, q);
-    if (!resolution) continue;
-    if (seen.has(normalizeFoodName(resolution.parsed.name))) continue;
-    results.push(resolution);
-    break;
-  }
-  return results.slice(0, 6);
+  return found.slice(0, 5);
 }
 
 /**
- * Tier 3. Only reached when nothing local matched, or when the user explicitly
- * asks for it. Throws ParseError — the caller surfaces the message.
+ * Read the text and find what it refers to. Safe to call on every keystroke —
+ * it touches Dexie and nothing else.
  */
-export async function resolveWithAI(text: string): Promise<Resolution> {
-  const parsed = await parseFood(text);
-  return { tier: 'ai', parsed };
+export async function resolveEntry(text: string): Promise<Resolution> {
+  const input = parseFoodInput(text);
+  if (!input.raw || !input.name) return { input, matches: [] };
+
+  const foods = await matchByName(input.name);
+  const matches: Match[] = [];
+  let problem: string | undefined;
+
+  for (const food of foods) {
+    const result = servingsFor(input.amount, {
+      servingQty: food.servingQty,
+      servingUnit: food.servingUnit,
+    });
+    if (!result.ok) {
+      // Remembered rather than discarded: a name that matched but couldn't take
+      // the amount is a different situation from a name nobody recognises, and
+      // telling the user which one they're in is the whole point.
+      problem ??= result.reason;
+      continue;
+    }
+    matches.push({
+      food,
+      servings: result.servings,
+      totals: scaleMacros(
+        {
+          calories: food.calories,
+          proteinG: food.proteinG,
+          carbsG: food.carbsG,
+          fatG: food.fatG,
+        },
+        result.servings,
+      ),
+      amountLabel: amountLabelFor(food, result.servings),
+    });
+  }
+
+  return { input, matches, problem: matches.length ? undefined : problem };
 }
+
+/**
+ * The starting state of the label card for a food the app doesn't know yet,
+ * seeded with whatever the text already carried. An existing food is passed in
+ * when the user is correcting one rather than creating one.
+ */
+export interface LabelDraft {
+  /** Set when this edits a food that already exists. */
+  foodId?: string;
+  name: string;
+  servingQty: string;
+  servingUnit: string;
+  servingNoun?: string;
+  calories: string;
+  proteinG: string;
+  carbsG: string;
+  fatG: string;
+  /** How many servings to log once saved. */
+  servings: string;
+}
+
+export function draftFromInput(input: FoodInput, existing?: Food): LabelDraft {
+  const serving =
+    input.serving ??
+    (existing
+      ? { value: existing.servingQty ?? 1, unit: (existing.servingUnit ?? 'count') as 'g' | 'ml' | 'count' }
+      : undefined);
+  const str = (n: number | undefined) => (n === undefined ? '' : String(n));
+
+  // Facts the user just typed win over the stored ones — they are the more
+  // recent statement of the same fact, and the card is where they get checked.
+  const facts = input.hasFacts
+    ? input.facts
+    : {
+        calories: existing?.calories,
+        proteinG: existing?.proteinG,
+        carbsG: existing?.carbsG,
+        fatG: existing?.fatG,
+      };
+
+  const servings = existing
+    ? servingsFor(input.amount, { servingQty: existing.servingQty, servingUnit: existing.servingUnit })
+    : servingsFor(input.amount?.unit === 'count' ? input.amount : undefined, {});
+
+  return {
+    foodId: existing?.id,
+    name: input.name || existing?.name || '',
+    servingQty: String(serving?.value ?? 1),
+    servingUnit: serving?.unit ?? 'count',
+    servingNoun: input.servingNoun,
+    calories: str(facts.calories),
+    proteinG: str(facts.proteinG),
+    carbsG: str(facts.carbsG),
+    fatG: str(facts.fatG),
+    servings: String(servings.ok ? servings.servings : 1),
+  };
+}
+
+export { servingLabel };

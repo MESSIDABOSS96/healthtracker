@@ -3,11 +3,7 @@
 // One meal entry. Resting state is a two-line row — food name over its serving
 // detail — with the entry's calories set right, so the list scans down a clean
 // numeric column. Tapping expands inline edit: servings + calories + macros +
-// bucket + footer.
-//
-// The bucket badge that used to sit at the right of each row is gone: the list
-// is grouped by bucket, so every row repeated its own section heading. The
-// calorie figure took the slot instead, which the row didn't show at all.
+// footer.
 //
 // Calories and macros are editable per entry, and that is the point of the
 // screen: the resolver's answer is a good default, not a verdict. USDA's egg is
@@ -17,23 +13,24 @@
 // every other day that logged the same food. (Per D-20 foodId stays immutable:
 // this edits the numbers, never which food the entry points at.)
 //
+// A blank macro field here means UNKNOWN, and saving it keeps it unknown. That
+// is how you take back a number you shouldn't have claimed.
+//
 // Per UI-SPEC §"Destructive confirmations: NONE" — meal-entry delete is silent.
 // Keyboard: Escape collapses without commit; Enter in any field commits Save.
 
 import { useState, useEffect, useRef, type KeyboardEvent } from 'react';
 import { Trash2 } from 'lucide-react';
-import type { Food, MealBucket, MealEntry } from '@/db/schema';
+import type { Food, MealEntry } from '@/db/schema';
 import { Button } from '@/components/ui/button';
-import { Segmented } from '@/components/ui/segmented';
 import { field, focusRing } from '@/components/ui/styles';
 import { updateMealEntry, deleteMealEntry } from '@/services/meals.svc';
+import { parseMacroField, showMacro } from '@/lib/macros';
 import { cn } from '@/lib/utils';
 
-const BUCKETS: MealBucket[] = ['breakfast', 'lunch', 'dinner', 'snack'];
-const BUCKET_OPTIONS = BUCKETS.map(b => ({ value: b, label: b }));
+
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
-const num = (s: string) => Math.max(0, parseFloat(s) || 0);
 
 interface Totals {
   calories: string;
@@ -42,12 +39,17 @@ interface Totals {
   fatG: string;
 }
 
+/** An unknown macro renders as an EMPTY field, not a zero. Typing over a
+ *  pre-filled 0 would have the user assert a number the entry never had, and
+ *  clearing a field is how you go back to not knowing. */
+const showField = (n: number | undefined) => (n === undefined ? '' : String(round1(n)));
+
 function totalsOf(entry: MealEntry): Totals {
   return {
-    calories: String(round1(entry.computedCalories)),
-    proteinG: String(round1(entry.computedProteinG)),
-    carbsG: String(round1(entry.computedCarbsG)),
-    fatG: String(round1(entry.computedFatG)),
+    calories: showField(entry.computedCalories),
+    proteinG: showField(entry.computedProteinG),
+    carbsG: showField(entry.computedCarbsG),
+    fatG: showField(entry.computedFatG),
   };
 }
 
@@ -62,7 +64,6 @@ export function MealEntryRow({ entry, food }: MealEntryRowProps) {
   // retyping is legitimately empty for a keystroke or two, and parsing that to
   // 0 as it goes is what broke the rescale below.
   const [servingsText, setServingsText] = useState<string>(() => String(entry.servings));
-  const [bucket, setBucket] = useState<MealBucket>(entry.bucket);
   const [totals, setTotals] = useState<Totals>(() => totalsOf(entry));
   /** The last amount the macros on screen actually correspond to. */
   const scaledFrom = useRef<number>(entry.servings);
@@ -73,9 +74,8 @@ export function MealEntryRow({ entry, food }: MealEntryRowProps) {
   useEffect(() => {
     setServingsText(String(entry.servings));
     scaledFrom.current = entry.servings;
-    setBucket(entry.bucket);
     setTotals(totalsOf(entry));
-  }, [entry.servings, entry.bucket, entry.computedCalories]);
+  }, [entry.servings, entry.computedCalories]);
 
   /**
    * Retyping the serving count rescales the four numbers under it, so the row
@@ -103,11 +103,16 @@ export function MealEntryRow({ entry, food }: MealEntryRowProps) {
     scaledFrom.current = value;
     if (!(from > 0) || from === value) return;
     const factor = value / from;
+    // Rescaling an unknown leaves it unknown — there is nothing to multiply.
+    const rescale = (v: string) => {
+      const n = parseMacroField(v);
+      return n === undefined ? '' : String(round1(n * factor));
+    };
     setTotals(t => ({
-      calories: String(round1(num(t.calories) * factor)),
-      proteinG: String(round1(num(t.proteinG) * factor)),
-      carbsG: String(round1(num(t.carbsG) * factor)),
-      fatG: String(round1(num(t.fatG) * factor)),
+      calories: rescale(t.calories),
+      proteinG: rescale(t.proteinG),
+      carbsG: rescale(t.carbsG),
+      fatG: rescale(t.fatG),
     }));
   };
 
@@ -115,12 +120,11 @@ export function MealEntryRow({ entry, food }: MealEntryRowProps) {
     if (!(servings > 0)) return;
     await updateMealEntry(entry.id, {
       servings,
-      bucket,
       totals: {
-        calories: num(totals.calories),
-        proteinG: num(totals.proteinG),
-        carbsG: num(totals.carbsG),
-        fatG: num(totals.fatG),
+        calories: parseMacroField(totals.calories),
+        proteinG: parseMacroField(totals.proteinG),
+        carbsG: parseMacroField(totals.carbsG),
+        fatG: parseMacroField(totals.fatG),
       },
     });
     setEditing(false);
@@ -135,7 +139,6 @@ export function MealEntryRow({ entry, food }: MealEntryRowProps) {
   const handleCancel = () => {
     setServingsText(String(entry.servings));
     scaledFrom.current = entry.servings;
-    setBucket(entry.bucket);
     setTotals(totalsOf(entry));
     setEditing(false);
   };
@@ -163,7 +166,7 @@ export function MealEntryRow({ entry, food }: MealEntryRowProps) {
             </span>
           </span>
           <span className="stat shrink-0 text-[13px] text-muted">
-            {Math.round(entry.computedCalories).toLocaleString()}
+            {showMacro(entry.computedCalories)}
           </span>
         </button>
 
@@ -237,17 +240,6 @@ export function MealEntryRow({ entry, food }: MealEntryRowProps) {
         {macroField('Protein', 'proteinG', 'col-span-2')}
         {macroField('Carbs', 'carbsG', 'col-span-2')}
         {macroField('Fat', 'fatG', 'col-span-2')}
-      </div>
-
-      <div>
-        <p className="mb-1.5 text-xs font-medium text-muted">Meal</p>
-        <Segmented
-          value={bucket}
-          onChange={setBucket}
-          options={BUCKET_OPTIONS}
-          ariaLabel="Meal"
-          itemClassName="capitalize"
-        />
       </div>
 
       <div className="flex items-center gap-2">

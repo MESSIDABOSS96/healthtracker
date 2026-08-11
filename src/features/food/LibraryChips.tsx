@@ -1,6 +1,6 @@
 // src/features/food/LibraryChips.tsx
 // One-tap re-log from the auto-library: Recent + Frequent rows. Uses the
-// last-used servings for the food, current time's bucket. A short cooldown per
+// last-used servings for the food. A short cooldown per
 // food guards against accidental double-taps double-logging.
 
 import { useRef } from 'react';
@@ -9,7 +9,6 @@ import { QuickLogChipRow } from './QuickLogChipRow';
 import { useRecentFoods, useFrequentFoods } from './hooks';
 import { logMeal, getLastServingsForFood } from '@/services/meals.svc';
 import { hideFoodFromChips } from '@/services/food.svc';
-import { inferBucket } from '@/lib/dayKey';
 
 const DOUBLE_TAP_GUARD_MS = 1500;
 
@@ -25,7 +24,7 @@ export function LibraryChips({ dayKey }: { dayKey: string }) {
     lastLogged.current.set(food.id, now);
 
     const servings = (await getLastServingsForFood(food.id)) ?? 1;
-    await logMeal({ food, servings, bucket: inferBucket(), dayKey });
+    await logMeal({ food, servings, dayKey });
   };
 
   // Dismiss, not delete — see hideFoodFromChips. Silent, matching the meal-row

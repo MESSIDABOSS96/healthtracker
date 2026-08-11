@@ -4,14 +4,30 @@
 // Single-statement Dexie puts auto-transaction; no explicit wrapper needed (Pitfall #1).
 
 import { db } from '@/db/db';
-import type { Food, MealEntry, MealBucket } from '@/db/schema';
+import type { Food, MealEntry } from '@/db/schema';
+import { scaleMacros, sumMacros, type MacroTotals, type Macros } from '@/lib/macros';
 import { markDeleted, markWritten } from './syncMeta.svc';
 
-export interface DailyTotals {
-  calories: number;
-  proteinG: number;
-  carbsG: number;
-  fatG: number;
+export type DailyTotals = MacroTotals;
+
+/** The four numbers a food carries, pulled off the row in one place. */
+export function foodMacros(food: Food): Macros {
+  return {
+    calories: food.calories,
+    proteinG: food.proteinG,
+    carbsG: food.carbsG,
+    fatG: food.fatG,
+  };
+}
+
+/** The four numbers an entry was logged with. */
+export function entryMacros(entry: MealEntry): Macros {
+  return {
+    calories: entry.computedCalories,
+    proteinG: entry.computedProteinG,
+    carbsG: entry.computedCarbsG,
+    fatG: entry.computedFatG,
+  };
 }
 
 // ------- Writes -------
@@ -20,22 +36,23 @@ export interface DailyTotals {
 export async function logMeal(params: {
   food: Food;
   servings: number;
-  bucket: MealBucket;
   dayKey: string;
 }): Promise<string> {
-  const { food, servings, bucket, dayKey } = params;
+  const { food, servings, dayKey } = params;
+  // Unknowns survive the multiplication — 1.5 servings of a food whose fat was
+  // never filled in has unknown fat, not 0 g of it.
+  const totals = scaleMacros(foodMacros(food), servings);
   const entry: MealEntry = {
     id: crypto.randomUUID(),
     dayKey,
     foodId: food.id,
     foodName: food.name,
     servings,
-    bucket,
     loggedAt: Date.now(),
-    computedCalories: food.calories * servings,
-    computedProteinG: food.proteinG * servings,
-    computedCarbsG: food.carbsG * servings,
-    computedFatG: food.fatG * servings,
+    computedCalories: totals.calories,
+    computedProteinG: totals.proteinG,
+    computedCarbsG: totals.carbsG,
+    computedFatG: totals.fatG,
   };
   await db.mealEntries.put(entry);
   // Auto-library bookkeeping: every log bumps recency + frequency.
@@ -104,8 +121,7 @@ export async function updateMealEntry(
   id: string,
   patch: {
     servings: number;
-    bucket: MealBucket;
-    totals?: { calories: number; proteinG: number; carbsG: number; fatG: number };
+    totals?: Macros;
   },
 ): Promise<void> {
   const existing = await db.mealEntries.get(id);
@@ -117,18 +133,12 @@ export async function updateMealEntry(
     // Nothing to recompute from and nothing supplied — leave the entry alone
     // rather than zeroing a day's calories.
     if (!food) return;
-    totals = {
-      calories: food.calories * patch.servings,
-      proteinG: food.proteinG * patch.servings,
-      carbsG: food.carbsG * patch.servings,
-      fatG: food.fatG * patch.servings,
-    };
+    totals = scaleMacros(foodMacros(food), patch.servings);
   }
 
   const updated: MealEntry = {
     ...existing,
     servings: patch.servings,
-    bucket: patch.bucket,
     // Denormalized totals (FOOD-06) — day totals never join.
     computedCalories: totals.calories,
     computedProteinG: totals.proteinG,
@@ -150,17 +160,19 @@ export function getTodayEntries(dayKey: string): Promise<MealEntry[]> {
   return db.mealEntries.where('dayKey').equals(dayKey).sortBy('loggedAt');
 }
 
+/**
+ * The day's numbers, plus how many entries had nothing to contribute to each.
+ *
+ * The `missing` counts are not decoration. A day holding one meal with no
+ * calorie figure has a calorie total that is a FLOOR, and both the summary
+ * ("540+") and closure (which refuses to pass a ceiling it can't see the top
+ * of) need to know that. Returning a bare sum would make an incomplete day
+ * indistinguishable from a complete one — the same collapse that made a blank
+ * macro mean zero.
+ */
 export async function getDailyTotals(dayKey: string): Promise<DailyTotals> {
   const entries = await db.mealEntries.where('dayKey').equals(dayKey).toArray();
-  return entries.reduce<DailyTotals>(
-    (acc, e) => ({
-      calories: acc.calories + e.computedCalories,
-      proteinG: acc.proteinG + e.computedProteinG,
-      carbsG: acc.carbsG + e.computedCarbsG,
-      fatG: acc.fatG + e.computedFatG,
-    }),
-    { calories: 0, proteinG: 0, carbsG: 0, fatG: 0 },
-  );
+  return sumMacros(entries.map(entryMacros));
 }
 
 /**
@@ -192,6 +204,7 @@ export async function getCaloriesByDay(
     .toArray();
   const byDay = new Map<string, number>();
   for (const e of entries) {
+    if (e.computedCalories === undefined) continue;
     byDay.set(e.dayKey, (byDay.get(e.dayKey) ?? 0) + e.computedCalories);
   }
   return byDay;

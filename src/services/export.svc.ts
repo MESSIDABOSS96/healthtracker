@@ -4,7 +4,7 @@
 // complete copy of the database — and OPFS photos as data URIs.
 //
 // The Anthropic API key deliberately CANNOT appear here: it lives in
-// localStorage (lib/apiKey.ts) and this service reads Dexie tables only.
+// Dexie tables only — nothing here reads localStorage.
 //
 // Pitfall guards:
 //   #1 (IDB auto-commit): NO transaction wrapper — the OPFS loop awaits non-IDB
