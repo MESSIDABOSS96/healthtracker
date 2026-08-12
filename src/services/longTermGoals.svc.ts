@@ -32,6 +32,8 @@ export interface LongTermGoalsInput {
   targetDate?: string;
   liftsPerWeek?: number;
   cardioPerWeek?: number;
+  /** Cardio every day — narrows a rest day to covering the lift alone. */
+  cardioDaily?: boolean;
   /** undefined = auto (derive from the weight goal). */
   directionOverride?: WeightDirection;
 }

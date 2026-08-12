@@ -7,6 +7,7 @@
 import { db } from '@/db/db';
 import type { CheckinKind, DailyCheckin } from '@/db/schema';
 import { markDeleted, markWritten } from './syncMeta.svc';
+import { SINGLETON_ID } from './longTermGoals.svc';
 
 /**
  * Kinds that cannot stand beside a newly-checked one, cleared automatically.
@@ -24,12 +25,32 @@ const CONFLICTS: Record<CheckinKind, readonly CheckinKind[]> = {
   rest: ['lift', 'cardio'],
 };
 
+/**
+ * The same table with cardio pulled out of it, for a program that does cardio
+ * every day (LongTermGoals.cardioDaily).
+ *
+ * There, "rest day" means no LIFT, and a walk still happened — that pairing is
+ * the normal shape of the day, not a contradiction, so it has to be storable.
+ * Without this, checking cardio silently un-marked the rest day the user had
+ * just declared, and since rest no longer closes training on its own under that
+ * setting, the two check-offs would take turns cancelling each other and the arc
+ * could never fill.
+ */
+const CONFLICTS_CARDIO_DAILY: Record<CheckinKind, readonly CheckinKind[]> = {
+  lift: ['rest'],
+  cardio: [],
+  rest: ['lift'],
+};
+
 export async function toggleCheckin(dayKey: string, kind: CheckinKind): Promise<void> {
   // One transaction so a toggle that also clears a conflicting kind is atomic —
   // a half-applied swap would leave the day claiming both "rest" and "lifted".
   // Every await inside is a Dexie call (Pitfall #1); syncMeta is listed because
-  // markWritten/markDeleted write to it.
-  await db.transaction('rw', [db.dailyCheckins, db.syncMeta], async () => {
+  // markWritten/markDeleted write to it, and longTermGoals because the conflict
+  // rules depend on the cardio cadence — reading it here rather than taking it
+  // as an argument keeps the rule true for every writer, which is the whole
+  // point of enforcing exclusivity in the service.
+  await db.transaction('rw', [db.dailyCheckins, db.syncMeta, db.longTermGoals], async () => {
     const existing = await db.dailyCheckins.get([dayKey, kind]);
     if (existing) {
       await db.dailyCheckins.delete([dayKey, kind]);
@@ -43,7 +64,9 @@ export async function toggleCheckin(dayKey: string, kind: CheckinKind): Promise<
     // One clock for the whole action, so the write and the conflict-clearing
     // deletes can't sort against each other on a remote device.
     const now = Date.now();
-    for (const other of CONFLICTS[kind]) {
+    const cardioDaily = (await db.longTermGoals.get(SINGLETON_ID))?.cardioDaily === true;
+    const conflicts = cardioDaily ? CONFLICTS_CARDIO_DAILY : CONFLICTS;
+    for (const other of conflicts[kind]) {
       if (!(await db.dailyCheckins.get([dayKey, other]))) continue;
       await db.dailyCheckins.delete([dayKey, other]);
       await markDeleted('dailyCheckins', [dayKey, other], now);

@@ -96,7 +96,7 @@ export function DayScreen({ dayKey, todayKey }: DayScreenProps) {
           </div>
         </div>
 
-        <CheckinButtons dayKey={dayKey} />
+        <CheckinButtons dayKey={dayKey} cardioDaily={closure?.cardioDaily ?? false} />
 
         <Card>
           <CardHeader>

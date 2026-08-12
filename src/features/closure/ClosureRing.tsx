@@ -107,11 +107,17 @@ export function ClosureRing({ closure, streak }: ClosureRingProps) {
         : '—';
     }
     if (closure.lift && closure.cardio) return 'lift · cardio';
-    if (closure.lift) return 'lift';
+    // Rest + cardio is only reachable when cardio is daily, and it's the normal
+    // shape of an off day there: no lift, walk done, arc full.
+    if (closure.rest && closure.cardio) return 'rest · cardio';
     if (closure.cardio) return 'cardio';
+    // A half-full arc has to name what's missing. Under daily cardio the lift or
+    // the declared day off is only half the answer, and "lift" alone beside an
+    // unclosed segment reads as the check-off not having counted.
+    if (closure.lift) return closure.cardioDaily ? 'lift · cardio to go' : 'lift';
     // Named rather than shown as a generic tick: a filled training arc on a day
     // with no session needs to say what filled it, or it reads as a bug.
-    if (closure.rest) return 'rest day';
+    if (closure.rest) return closure.cardioDaily ? 'rest · cardio to go' : 'rest day';
     return 'none yet';
   };
 

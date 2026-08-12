@@ -14,6 +14,11 @@
 // choose from". It wears the training hue anyway, because that is the arc it
 // fills, and the three can never be lit at once — checking rest clears the
 // sessions and vice versa (checkins.svc), so the shared color can't confuse.
+//
+// `cardioDaily` (Settings: cardio every day) changes what rest promises: it then
+// stands in for the lift alone and the arc still waits on cardio. The tile has
+// to say which, because a rest day that visibly did NOT close training would
+// otherwise read as the check-off having failed.
 
 import { useLiveQuery } from 'dexie-react-hooks';
 import { motion, useReducedMotion } from 'motion/react';
@@ -35,11 +40,19 @@ const CONFIG: Array<{
 
 const REST_COLOR = 'var(--ring-lift)';
 
-export function CheckinButtons({ dayKey }: { dayKey: string }) {
+interface CheckinButtonsProps {
+  dayKey: string;
+  /** Cardio happens every day, so a rest day covers only the lift. */
+  cardioDaily?: boolean;
+}
+
+export function CheckinButtons({ dayKey, cardioDaily = false }: CheckinButtonsProps) {
   const reduceMotion = useReducedMotion();
   const checkins = useLiveQuery(() => getCheckinsForDay(dayKey), [dayKey]);
   const checked = new Set((checkins ?? []).map(c => c.kind));
   const resting = checked.has('rest');
+  /** Marked off, and still short of the one thing rest doesn't cover. */
+  const restPending = resting && cardioDaily && !checked.has('cardio');
   const press = reduceMotion ? undefined : { scale: 0.97 };
   const spring = { type: 'spring' as const, stiffness: 400, damping: 25 };
 
@@ -106,8 +119,12 @@ export function CheckinButtons({ dayKey }: { dayKey: string }) {
         aria-pressed={resting}
         aria-label={
           resting
-            ? 'Rest day — marked, tap to undo'
-            : 'Rest day — tap to mark this a planned day off; training counts as done'
+            ? restPending
+              ? 'Rest day — marked, cardio still to go; tap to undo'
+              : 'Rest day — marked, tap to undo'
+            : cardioDaily
+              ? 'Rest day — tap to mark this a planned day off; covers your lift, cardio still counts'
+              : 'Rest day — tap to mark this a planned day off; training counts as done'
         }
         className={cn(
           'flex h-[54px] w-full items-center gap-3 rounded-lg border px-4',
@@ -136,17 +153,26 @@ export function CheckinButtons({ dayKey }: { dayKey: string }) {
         >
           Rest day
         </span>
-        {resting ? (
+        {/* The trailing slot carries both when cardio is daily: the tile IS
+            checked, and the day still isn't finished training. Dropping the
+            hint the moment rest is marked is what would make a stalled arc look
+            like the tap hadn't registered. */}
+        {(!resting || restPending) && (
+          <span aria-hidden className="text-[12px] text-faint">
+            {restPending
+              ? 'cardio still to go'
+              : cardioDaily
+                ? 'covers your lift'
+                : 'closes training'}
+          </span>
+        )}
+        {resting && (
           <span
             aria-hidden
             className="grid h-5 w-5 place-items-center rounded-full"
             style={{ backgroundColor: REST_COLOR }}
           >
             <Check size={12} strokeWidth={3.5} className="text-surface" />
-          </span>
-        ) : (
-          <span aria-hidden className="text-[12px] text-faint">
-            closes training
           </span>
         )}
       </motion.button>

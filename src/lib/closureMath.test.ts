@@ -130,6 +130,28 @@ test('an unmarked day off is still a miss', () => {
   assert.deepEqual(trainingComponent(false, false, false), { progress: 0, met: false });
 });
 
+test('with cardio daily, cardio is what closes training', () => {
+  assert.deepEqual(trainingComponent(false, true, false, true), { progress: 1, met: true });
+  assert.deepEqual(trainingComponent(true, true, false, true), { progress: 1, met: true });
+  // Rest + cardio: the normal off day under this setting — no lift, walk done.
+  assert.deepEqual(trainingComponent(false, true, true, true), { progress: 1, met: true });
+});
+
+test('with cardio daily, a rest day only covers the lift', () => {
+  // The whole point of the setting: a day off from lifting is not a day off
+  // from the cardio you do every day, so the arc stays half-filled and open.
+  assert.deepEqual(trainingComponent(false, false, true, true), { progress: 0.5, met: false });
+  // Same shape for a lift without the daily cardio — half answered either way.
+  assert.deepEqual(trainingComponent(true, false, false, true), { progress: 0.5, met: false });
+  // And nothing at all is still nothing — half credit has to mean something.
+  assert.deepEqual(trainingComponent(false, false, false, true), { progress: 0, met: false });
+});
+
+test('cardio daily is opt-in — the flag off keeps the original rule', () => {
+  assert.deepEqual(trainingComponent(false, false, true, false), { progress: 1, met: true });
+  assert.deepEqual(trainingComponent(true, false, false, false), { progress: 1, met: true });
+});
+
 test('a session alongside a legacy rest row still reads as done', () => {
   // Writes are mutually exclusive now, but rows predating that rule (or
   // arriving from an older device mid-sync) must not produce a weird verdict.

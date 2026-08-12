@@ -21,6 +21,19 @@ import { todayKey } from '@/lib/dayKey';
 /** 'auto' is the absence of an override, not a fourth stored value. */
 type DirectionChoice = 'auto' | WeightDirection;
 
+/** Cardio as a weekly count vs. as something that happens every day. */
+type CardioCadence = 'weekly' | 'daily';
+
+const CADENCE_OPTIONS: Array<{ value: CardioCadence; label: string }> = [
+  { value: 'weekly', label: 'Some days' },
+  { value: 'daily', label: 'Every day' },
+];
+
+const CADENCE_COPY: Record<CardioCadence, string> = {
+  weekly: 'a rest day covers both — mark one and training is done for the day',
+  daily: 'a rest day covers the lift only — the training ring still waits on cardio',
+};
+
 const DIRECTION_OPTIONS: Array<{ value: DirectionChoice; label: string }> = [
   { value: 'auto', label: 'Auto' },
   { value: 'lose', label: 'Cut' },
@@ -49,6 +62,7 @@ export function LongTermGoalsForm() {
   const [targetDate, setTargetDate] = useState('');
   const [lifts, setLifts] = useState('');
   const [cardio, setCardio] = useState('');
+  const [cadence, setCadence] = useState<CardioCadence>('weekly');
   const [direction, setDirection] = useState<DirectionChoice>('auto');
   const [saved, setSaved] = useState(false);
 
@@ -59,6 +73,7 @@ export function LongTermGoalsForm() {
     setTargetDate(stored?.targetDate ?? '');
     setLifts(stored?.liftsPerWeek != null ? String(stored.liftsPerWeek) : '');
     setCardio(stored?.cardioPerWeek != null ? String(stored.cardioPerWeek) : '');
+    setCadence(stored?.cardioDaily ? 'daily' : 'weekly');
     setDirection(stored?.directionOverride ?? 'auto');
   }, [stored]);
 
@@ -82,7 +97,11 @@ export function LongTermGoalsForm() {
         targetWeight: numOrUndef(targetWeight),
         targetDate: targetDate || undefined,
         liftsPerWeek: numOrUndef(lifts),
-        cardioPerWeek: numOrUndef(cardio),
+        // Daily cardio IS a weekly target of 7 — writing it keeps the Dashboard's
+        // weekly bar measuring against what the user actually signed up for,
+        // instead of leaving it blank or stuck at an older, smaller number.
+        cardioPerWeek: cadence === 'daily' ? 7 : numOrUndef(cardio),
+        cardioDaily: cadence === 'daily' ? true : undefined,
         directionOverride: direction === 'auto' ? undefined : direction,
       },
       currentEma,
@@ -160,11 +179,29 @@ export function LongTermGoalsForm() {
               min="0"
               max="7"
               placeholder="—"
-              value={cardio}
+              // Daily cardio already answers this field, so it shows the answer
+              // rather than going blank — a disabled input with 7 in it says
+              // "decided", an empty one says "you forgot something".
+              value={cadence === 'daily' ? '7' : cardio}
+              disabled={cadence === 'daily'}
               onChange={e => setCardio(e.target.value)}
-              className={inputClass}
+              className={`${inputClass} disabled:text-muted disabled:opacity-70`}
             />
           </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <span className={`block ${labelClass}`}>Cardio days</span>
+          <Segmented
+            value={cadence}
+            onChange={setCadence}
+            options={CADENCE_OPTIONS}
+            ariaLabel="Cardio cadence"
+          />
+          <p className="text-xs leading-relaxed text-faint">
+            Cardio {cadence === 'daily' ? 'happens every day' : 'happens on some days'} —{' '}
+            {CADENCE_COPY[cadence]}.
+          </p>
         </div>
 
         <div className="space-y-1.5">

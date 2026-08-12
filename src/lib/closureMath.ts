@@ -146,8 +146,29 @@ export function calorieComponent(
  * The three are mutually exclusive at the write site, not here, so this stays
  * a pure reading of whatever rows exist — including a legacy pair from before
  * that rule, where lift and rest both being true still reads as done.
+ *
+ * @param cardioDaily - the user's program does cardio EVERY day (Settings).
+ *
+ * That setting narrows what rest covers, and it has to: "a day off" means no
+ * lifting to someone whose walk happens seven days a week, so letting rest fill
+ * the whole arc would hand them a closed day for skipping the one session they
+ * actually committed to daily. With it on, cardio is the requirement and rest
+ * excuses only the lift — so the day passes on cardio, and a rest day or a lift
+ * without it scores HALF: the training question is genuinely half-answered
+ * there, which is a different state from both "done" and "nothing yet", and the
+ * arc should say so. This is the one place partial credit belongs in this
+ * component; under the default rule it would just soften a miss.
  */
-export function trainingComponent(lift: boolean, cardio: boolean, rest = false): ClosureComponent {
+export function trainingComponent(
+  lift: boolean,
+  cardio: boolean,
+  rest = false,
+  cardioDaily = false,
+): ClosureComponent {
+  if (cardioDaily) {
+    if (cardio) return { progress: 1, met: true };
+    return { progress: lift || rest ? 0.5 : 0, met: false };
+  }
   const done = lift || cardio || rest;
   return { progress: done ? 1 : 0, met: done };
 }

@@ -17,6 +17,8 @@
 //               a ceiling on a cut, a floor on a bulk, a band on maintenance.
 //   training  — lift OR cardio OR a declared rest day. Either session is a
 //               training day, and a planned day off is not a failure to train.
+//               If Settings says cardio is daily, rest covers only the lift and
+//               the cardio check-off is what closes the arc.
 //
 // progress drives the ring fill and the grid shading; `met` decides closure.
 // They are separate on purpose: 49g of a 50g protein goal should look nearly
@@ -55,8 +57,17 @@ export interface DayClosure {
   /** Kept separate from `training` for the check-off buttons and tooltips. */
   lift: boolean;
   cardio: boolean;
-  /** The day was declared a planned day off — training is met without a session. */
+  /**
+   * The day was declared a planned day off. That meets training on its own
+   * unless `cardioDaily` is set, where it only stands in for the lift.
+   */
   rest: boolean;
+  /**
+   * The program does cardio every day, so rest excuses the lift alone. Carried
+   * on the closure rather than re-read by each view: the ring legend and the
+   * check-off row both have to explain a rest day differently under it.
+   */
+  cardioDaily: boolean;
   direction: WeightDirection;
   /**
    * How many of the day's meals carry no calorie figure. Non-zero means
@@ -70,6 +81,7 @@ function emptyClosure(
   proteinGoal: number,
   caloriesGoal: number,
   direction: WeightDirection,
+  cardioDaily = false,
 ): DayClosure {
   return {
     protein: { progress: 0, met: false },
@@ -84,6 +96,7 @@ function emptyClosure(
     lift: false,
     cardio: false,
     rest: false,
+    cardioDaily,
     direction,
     mealsMissingCalories: 0,
   };
@@ -109,12 +122,13 @@ export async function getClosureForRange(
   const proteinGoal = goals?.proteinG ?? 0;
   const caloriesGoal = goals?.calories ?? 0;
   const direction = resolveWeightDirection(longTerm);
+  const cardioDaily = longTerm?.cardioDaily === true;
 
   const map = new Map<string, DayClosure>();
   const ensure = (key: string): DayClosure => {
     let c = map.get(key);
     if (!c) {
-      c = emptyClosure(proteinGoal, caloriesGoal, direction);
+      c = emptyClosure(proteinGoal, caloriesGoal, direction, cardioDaily);
       map.set(key, c);
     }
     return c;
@@ -150,7 +164,7 @@ export async function getClosureForRange(
       hasFood.has(key),
       day.mealsMissingCalories > 0,
     );
-    day.training = trainingComponent(day.lift, day.cardio, day.rest);
+    day.training = trainingComponent(day.lift, day.cardio, day.rest, cardioDaily);
     day.progress = (day.protein.progress + day.calories.progress + day.training.progress) / 3;
     day.closed = day.protein.met && day.calories.met && day.training.met;
   }
@@ -171,7 +185,12 @@ export async function getClosureForDay(dayKey: string): Promise<DayClosure> {
   ]);
   return (
     map.get(dayKey) ??
-    emptyClosure(goals?.proteinG ?? 0, goals?.calories ?? 0, resolveWeightDirection(longTerm))
+    emptyClosure(
+      goals?.proteinG ?? 0,
+      goals?.calories ?? 0,
+      resolveWeightDirection(longTerm),
+      longTerm?.cardioDaily === true,
+    )
   );
 }
 
