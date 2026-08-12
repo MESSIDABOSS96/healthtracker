@@ -15,7 +15,8 @@
 //   calories  — land on the right side of the calorie goal. Which side depends
 //               on whether you're cutting or bulking (see resolveWeightDirection):
 //               a ceiling on a cut, a floor on a bulk, a band on maintenance.
-//   training  — lift OR cardio. Either one is a training day.
+//   training  — lift OR cardio OR a declared rest day. Either session is a
+//               training day, and a planned day off is not a failure to train.
 //
 // progress drives the ring fill and the grid shading; `met` decides closure.
 // They are separate on purpose: 49g of a 50g protein goal should look nearly
@@ -54,6 +55,8 @@ export interface DayClosure {
   /** Kept separate from `training` for the check-off buttons and tooltips. */
   lift: boolean;
   cardio: boolean;
+  /** The day was declared a planned day off — training is met without a session. */
+  rest: boolean;
   direction: WeightDirection;
   /**
    * How many of the day's meals carry no calorie figure. Non-zero means
@@ -80,6 +83,7 @@ function emptyClosure(
     caloriesGoal,
     lift: false,
     cardio: false,
+    rest: false,
     direction,
     mealsMissingCalories: 0,
   };
@@ -132,6 +136,7 @@ export async function getClosureForRange(
     const day = ensure(c.dayKey);
     if (c.kind === 'lift') day.lift = true;
     if (c.kind === 'cardio') day.cardio = true;
+    if (c.kind === 'rest') day.rest = true;
   }
 
   for (const [key, day] of map) {
@@ -145,7 +150,7 @@ export async function getClosureForRange(
       hasFood.has(key),
       day.mealsMissingCalories > 0,
     );
-    day.training = trainingComponent(day.lift, day.cardio);
+    day.training = trainingComponent(day.lift, day.cardio, day.rest);
     day.progress = (day.protein.progress + day.calories.progress + day.training.progress) / 3;
     day.closed = day.protein.met && day.calories.met && day.training.met;
   }

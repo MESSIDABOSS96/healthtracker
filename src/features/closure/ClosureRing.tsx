@@ -109,6 +109,9 @@ export function ClosureRing({ closure, streak }: ClosureRingProps) {
     if (closure.lift && closure.cardio) return 'lift · cardio';
     if (closure.lift) return 'lift';
     if (closure.cardio) return 'cardio';
+    // Named rather than shown as a generic tick: a filled training arc on a day
+    // with no session needs to say what filled it, or it reads as a bug.
+    if (closure.rest) return 'rest day';
     return 'none yet';
   };
 

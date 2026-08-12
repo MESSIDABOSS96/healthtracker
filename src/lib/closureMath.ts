@@ -131,10 +131,23 @@ export function calorieComponent(
   return { progress: over(1), met: false };
 }
 
-/** Either check-off is a training day. Doing both is not worth extra credit —
- *  the goal is showing up, and weighting it would quietly reintroduce the old
- *  "lift AND cardio" bar that nobody cleared. */
-export function trainingComponent(lift: boolean, cardio: boolean): ClosureComponent {
-  const done = lift || cardio;
+/**
+ * Either check-off is a training day. Doing both is not worth extra credit —
+ * the goal is showing up, and weighting it would quietly reintroduce the old
+ * "lift AND cardio" bar that nobody cleared.
+ *
+ * A DECLARED REST DAY ALSO SATISFIES THIS, and it has to satisfy it fully.
+ * Every real program has scheduled off days, and grading one as a miss meant a
+ * correctly-followed week could never close more than five days — the ring
+ * punished the plan for being a plan. Partial credit would be worse than
+ * nothing here: a rest day is not a half-finished workout, it is a day where
+ * the training question has been answered.
+ *
+ * The three are mutually exclusive at the write site, not here, so this stays
+ * a pure reading of whatever rows exist — including a legacy pair from before
+ * that rule, where lift and rest both being true still reads as done.
+ */
+export function trainingComponent(lift: boolean, cardio: boolean, rest = false): ClosureComponent {
+  const done = lift || cardio || rest;
   return { progress: done ? 1 : 0, met: done };
 }

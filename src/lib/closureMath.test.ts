@@ -119,3 +119,19 @@ test('either lift or cardio is a training day', () => {
   assert.deepEqual(trainingComponent(true, true), { progress: 1, met: true });
   assert.deepEqual(trainingComponent(false, false), { progress: 0, met: false });
 });
+
+test('a declared rest day closes training fully', () => {
+  assert.deepEqual(trainingComponent(false, false, true), { progress: 1, met: true });
+});
+
+test('an unmarked day off is still a miss', () => {
+  // The point of the rest flag: not-training and declaring-a-rest-day are
+  // different days, and only the second one closes.
+  assert.deepEqual(trainingComponent(false, false, false), { progress: 0, met: false });
+});
+
+test('a session alongside a legacy rest row still reads as done', () => {
+  // Writes are mutually exclusive now, but rows predating that rule (or
+  // arriving from an older device mid-sync) must not produce a weird verdict.
+  assert.deepEqual(trainingComponent(true, false, true), { progress: 1, met: true });
+});

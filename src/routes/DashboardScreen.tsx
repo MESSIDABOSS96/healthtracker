@@ -9,6 +9,7 @@ import { addDays, keyToDate, dateToKey } from '@/lib/dayKey';
 import { getAllWeights } from '@/services/weight.svc';
 import { getCaloriesByDay } from '@/services/meals.svc';
 import { getCheckinsInRange } from '@/services/checkins.svc';
+import type { DailyCheckin } from '@/db/schema';
 import { getLongTermGoals, computeWeightGoalProgress } from '@/services/longTermGoals.svc';
 import { useGoals } from '@/features/settings/hooks';
 import { GoalProgressCard } from '@/features/dashboard/GoalProgressCard';
@@ -64,14 +65,20 @@ export function DashboardScreen() {
     }
   }
 
-  // Training: sessions per week.
+  // Training: sessions per week. Rest days are check-ins but not SESSIONS —
+  // they close the day's training component without being something that
+  // happened, so counting them here would inflate every weekly bar and every
+  // frequency goal with days spent deliberately not training.
+  const sessions = (checkins ?? []).filter(
+    (c): c is DailyCheckin & { kind: 'lift' | 'cardio' } => c.kind !== 'rest',
+  );
   const trainingData: TrainingWeekDatum[] = [];
   if (checkins) {
     const byWeek = new Map<string, { lift: number; cardio: number }>();
     for (let k = weekStart(startKey); k <= todayKey; k = addDays(k, 7)) {
       byWeek.set(k, { lift: 0, cardio: 0 });
     }
-    for (const c of checkins) {
+    for (const c of sessions) {
       const wk = byWeek.get(weekStart(c.dayKey));
       if (wk) wk[c.kind] += 1;
     }
@@ -88,7 +95,7 @@ export function DashboardScreen() {
   // (the goal is anchored to its own start date, not the selected range).
   const goalProgress = computeWeightGoalProgress(longTermGoals, allWeights ?? [], todayKey);
   const currentWeekStart = weekStart(todayKey);
-  const thisWeek = (checkins ?? []).reduce(
+  const thisWeek = sessions.reduce(
     (acc, c) => {
       if (c.dayKey >= currentWeekStart) acc[c.kind] += 1;
       return acc;

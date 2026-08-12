@@ -40,7 +40,7 @@ function notifyLocalChange(): void {
 /**
  * dailyCheckins is keyed by [dayKey+kind]; everything else by a string id.
  * Joined with a space, which cannot appear in a YYYY-MM-DD dayKey or in
- * 'lift'/'cardio' — so the flattened key is unambiguous and reversible.
+ * 'lift'/'cardio'/'rest' — so the flattened key is unambiguous and reversible.
  */
 export function syncRowId(key: string | [string, string]): string {
   return Array.isArray(key) ? key.join(' ') : key;

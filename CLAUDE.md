@@ -50,7 +50,7 @@ A day is graded on three components, each producing a `progress` (0..1) and a ha
 |-----------|----------|----------------|
 | `protein` | daily protein goal reached | `protein / goal` |
 | `calories` | on the right side of the calorie goal | ramps toward the goal, drains past it |
-| `training` | lift **OR** cardio checked | binary |
+| `training` | lift **OR** cardio checked, **or** the day marked a rest day | binary |
 
 `progress` drives the ring arcs and the grid shading; `met` decides `closed`. **They are computed separately on purpose** — 49g of a 50g protein goal must look nearly full and still not pass, and deriving the verdict from a rounded percentage would turn that into a float-comparison bug.
 
@@ -62,6 +62,8 @@ Two traps this replaced, both worth not reintroducing:
 - **An unlogged day is not a day spent under your limit.** 0 kcal is technically under a cutting goal, so `calorieComponent` takes an explicit `hasFood` flag and returns zero without it. Logging nothing must never read as a perfect day.
 
 Requiring lift **and** cardio daily set a bar nobody cleared, so the ring sat at 2/3 permanently and stopped carrying information. Either one is a training day.
+
+**A rest day is a third `dailyCheckins` kind, not a flag somewhere else.** `'rest'` is the same shape as the other two — one row per day, existence = true — which is why it needed no migration: the store is keyed `[dayKey+kind]`, so a new kind is a new key, and it inherits sync, export and the range queries untouched. It closes the training component *fully*: a scheduled off day is not a half-finished workout, and grading it as a miss meant a correctly-followed program could never close more than five days a week. The three kinds are **mutually exclusive at the write site** (`checkins.svc`, one transaction) — a day you lifted is not a day off — but `trainingComponent` still reads a contradictory pair as done, because rows predating that rule can arrive mid-sync. **Rest is a check-in but not a session:** anything counting *sessions* (Dashboard weekly bars, the `liftsPerWeek`/`cardioPerWeek` progress) must filter it out, or deliberately not training inflates the training stats.
 
 ## The Food Resolver
 

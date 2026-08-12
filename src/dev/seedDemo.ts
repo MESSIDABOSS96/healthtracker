@@ -145,6 +145,12 @@ export async function seedDemo(todayKey: string): Promise<void> {
     if (didCardio) {
       checkins.push({ dayKey, kind: 'cardio', source: 'manual', loggedAt: dayStartMs + 19 * 3_600_000 });
     }
+    // Some untrained days were the plan, not a slip — that is the difference
+    // the rest flag exists to record, so the fixture has to contain both kinds
+    // or the demo grid shows a feature nobody can see working.
+    if (!didLift && !didCardio && !isToday && rng() < 0.55) {
+      checkins.push({ dayKey, kind: 'rest', source: 'manual', loggedAt: dayStartMs + 9 * 3_600_000 });
+    }
 
     // --- meals: ~88% of days logged, 3–5 entries
     if (rng() > 0.12) {
