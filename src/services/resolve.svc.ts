@@ -181,7 +181,14 @@ export function draftFromInput(input: FoodInput, existing?: Food): LabelDraft {
 
   return {
     foodId: existing?.id,
-    name: input.name || existing?.name || '',
+    // The typed name is a SEARCH QUERY, not a statement of fact — unlike the
+    // macros below, which the user did type as facts. Once a food has been
+    // picked the text that found it has done its job, so the row keeps its own
+    // name: "chick" is how you reached "Chicken breast", not what you want it
+    // called. Letting the query win renamed the library row on save (and its
+    // normalizedName with it), so every past entry and every future match was
+    // rewritten to whatever prefix happened to be in the box.
+    name: existing?.name || input.name || '',
     servingQty: String(serving?.value ?? 1),
     servingUnit: serving?.unit ?? 'count',
     servingNoun: input.servingNoun,
