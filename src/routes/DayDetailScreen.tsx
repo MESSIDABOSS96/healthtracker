@@ -6,15 +6,12 @@
 //
 // Today redirects to /daily so there is exactly one URL per day.
 //
-// Forward days are allowed up to the planning horizon and no further. The check
-// is here as well as on the arrows because a URL is not a button: the arrows
-// stop at the horizon, but /day/2031-01-01 is one typo (or one stale bookmark
-// after midnight) away, and a day beyond it has no route back except the
-// browser's own.
+// Future days need no guard of their own: the shape check above is the only
+// thing standing between a URL and a day, and a well-formed day key is a day
+// the app is willing to open however far out it sits.
 
 import { useParams, Navigate } from 'react-router-dom';
 import { useDayKey } from '@/lib/useDayKey';
-import { isReachableDay } from '@/lib/dayRoutes';
 import { DayScreen } from '@/features/day/DayScreen';
 
 const DAYKEY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -26,7 +23,7 @@ export function DayDetailScreen() {
   if (!dayKey || !DAYKEY_RE.test(dayKey)) {
     return <Navigate to="/dashboard" replace />;
   }
-  if (dayKey === todayKey || !isReachableDay(dayKey, todayKey)) {
+  if (dayKey === todayKey) {
     return <Navigate to="/daily" replace />;
   }
 

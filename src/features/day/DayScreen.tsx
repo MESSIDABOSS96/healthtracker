@@ -20,8 +20,8 @@
 // enters from that side — the gesture and the arrow are the same navigation,
 // not two features that happen to change the same URL.
 //
-// Forward now runs a week past today (see lib/dayRoutes). A future day is the
-// same screen with one card missing: you cannot weigh yourself on a day that
+// Forward runs as far ahead as you care to step (see lib/dayRoutes). A future
+// day is the same screen with one card missing: you cannot weigh yourself on a day that
 // hasn't happened, and a future reading would quietly become the anchor of the
 // EMA trend and the goal projection, both of which read the LATEST weight and
 // neither of which is bounded by today. Everything else on the screen is a
@@ -71,16 +71,13 @@ export function DayScreen({ dayKey, todayKey }: DayScreenProps) {
 
   const step = useCallback(
     (delta: -1 | 1) => {
-      const path = stepDayPath(dayKey, todayKey, delta);
-      if (!path) return;
-      navigate(path, { state: { dir: delta } satisfies DayNavState });
+      navigate(stepDayPath(dayKey, todayKey, delta), {
+        state: { dir: delta } satisfies DayNavState,
+      });
     },
     [dayKey, todayKey, navigate],
   );
-  useDaySwipe(swipeRef, {
-    onStep: step,
-    canGoForward: stepDayPath(dayKey, todayKey, 1) !== null,
-  });
+  useDaySwipe(swipeRef, { onStep: step });
 
   // Which way we arrived, read off history state rather than kept in a ref:
   // /daily and /day/:key are separate route components, so today → yesterday

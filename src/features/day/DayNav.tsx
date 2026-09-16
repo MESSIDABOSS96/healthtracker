@@ -1,14 +1,10 @@
 // src/features/day/DayNav.tsx
 // Day stepper: ← date → , with a way back to today when you've wandered off.
 //
-// Forward is disabled at the end of the range rather than hidden: a control
-// that vanishes makes the arrows jump position as you step through them, and
-// you lose the affordance that told you which way you were going.
-//
-// That end is no longer today — it's the planning horizon, because tomorrow's
-// food is something people know before they eat it. A future day says so under
-// the date: an unlogged day that looks exactly like a missed one is the one
-// reading this screen must never allow.
+// Neither arrow disables: the range runs in both directions with no end (see
+// lib/dayRoutes), because tomorrow's food is something people know before they
+// eat it. A future day says so under the date — an unlogged day that looks
+// exactly like a missed one is the one reading this screen must never allow.
 
 import { Link, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -26,7 +22,6 @@ export function DayNav({ dayKey, todayKey }: DayNavProps) {
   const navigate = useNavigate();
   const isToday = dayKey === todayKey;
   const isFuture = isFutureDay(dayKey, todayKey);
-  const forwardPath = stepDayPath(dayKey, todayKey, 1);
   const date = keyToDate(dayKey);
 
   const label = date.toLocaleDateString(undefined, {
@@ -41,13 +36,13 @@ export function DayNav({ dayKey, todayKey }: DayNavProps) {
   // and both hand the direction to the arriving screen so it enters from the
   // side it came from — an arrow tap and a drag should not land differently.
   const step = (delta: -1 | 1) => {
-    const path = stepDayPath(dayKey, todayKey, delta);
-    if (!path) return; // no logging the future
-    navigate(path, { state: { dir: delta } satisfies DayNavState });
+    navigate(stepDayPath(dayKey, todayKey, delta), {
+      state: { dir: delta } satisfies DayNavState,
+    });
   };
 
   const arrow =
-    'grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition-colors duration-150 ease-out-soft [@media(hover:hover)]:hover:bg-track [@media(hover:hover)]:hover:text-text disabled:pointer-events-none disabled:opacity-25';
+    'grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition-colors duration-150 ease-out-soft [@media(hover:hover)]:hover:bg-track [@media(hover:hover)]:hover:text-text';
 
   return (
     <div className="flex items-center justify-center gap-1">
@@ -78,7 +73,6 @@ export function DayNav({ dayKey, todayKey }: DayNavProps) {
       <button
         type="button"
         onClick={() => step(1)}
-        disabled={forwardPath === null}
         aria-label="Next day"
         className={cn(arrow, press, focusRing)}
       >

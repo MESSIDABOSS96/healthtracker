@@ -20,6 +20,11 @@
 // { passive: false }: React registers touchmove passively at the root, so the
 // JSX prop cannot cancel the scroll it needs to cancel.
 //
+// Both directions always commit. The forward drag used to hit a rubber-band
+// stop on today, which was the gesture's way of saying "there is nothing here";
+// there is something here now — tomorrow — so the resistance is gone and with
+// it the whole blocked/unblocked branch.
+//
 // The follow transform is written straight to the node's style rather than
 // through React state — one restyle per frame instead of a full re-render of a
 // screen that contains the ring, the meal list and four live Dexie queries.
@@ -41,18 +46,11 @@ const EDGE_GUARD = 26;
  *  that a day is coming, not a page being dragged into place. */
 const FOLLOW = 0.5;
 const FOLLOW_MAX = 96;
-/** Pulling past the far end of the range: it gives, then stops. That's the
- *  answer "there is nothing here", delivered without a message. */
-const BLOCKED_FOLLOW = 0.16;
-const BLOCKED_MAX = 26;
-
 const SETTLE = 'transform 260ms var(--ease-spring), opacity 200ms var(--ease-out)';
 
 interface DaySwipeOptions {
   /** delta is -1 (previous day) or +1 (next day). */
   onStep: (delta: -1 | 1) => void;
-  /** False at the far end of the range — today plus the planning horizon. */
-  canGoForward: boolean;
 }
 
 /** True when this gesture started somewhere that has its own use for sideways. */
@@ -72,7 +70,7 @@ function belongsToSomethingElse(target: EventTarget | null, root: HTMLElement): 
 
 export function useDaySwipe(
   ref: RefObject<HTMLElement | null>,
-  { onStep, canGoForward }: DaySwipeOptions,
+  { onStep }: DaySwipeOptions,
 ): void {
   useEffect(() => {
     const el = ref.current;
@@ -146,10 +144,7 @@ export function useDaySwipe(
       // reacting to the residual dy and the screen shears under the finger.
       if (e.cancelable) e.preventDefault();
 
-      const blocked = dx < 0 && !canGoForward;
-      const follow = blocked ? BLOCKED_FOLLOW : FOLLOW;
-      const max = blocked ? BLOCKED_MAX : FOLLOW_MAX;
-      offset(Math.max(-max, Math.min(max, dx * follow)));
+      offset(Math.max(-FOLLOW_MAX, Math.min(FOLLOW_MAX, dx * FOLLOW)));
     };
 
     const onTouchEnd = (e: TouchEvent) => {
@@ -162,7 +157,7 @@ export function useDaySwipe(
       const far = Math.abs(dx) > COMMIT_PX;
       const flicked = velocity > FLICK_VELOCITY && Math.abs(dx) > FLICK_PX;
       const delta: -1 | 1 = dx > 0 ? -1 : 1;
-      const commit = (far || flicked) && (delta === -1 || canGoForward);
+      const commit = far || flicked;
 
       end();
       if (commit) {
@@ -196,5 +191,5 @@ export function useDaySwipe(
       el.style.opacity = '';
       el.style.willChange = '';
     };
-  }, [ref, onStep, canGoForward]);
+  }, [ref, onStep]);
 }

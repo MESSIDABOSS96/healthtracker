@@ -17,7 +17,7 @@ import { Link } from 'react-router-dom';
 import type { DayClosure } from '@/services/closure.svc';
 import { addDays, keyToDate } from '@/lib/dayKey';
 import { Card, CardContent, CardHeader, CardMeta, CardTitle } from '@/components/ui/card';
-import { dayPath, isReachableDay } from '@/lib/dayRoutes';
+import { dayPath } from '@/lib/dayRoutes';
 import { focusRing } from '@/components/ui/styles';
 
 const WEEKS_WIDE = 26;
@@ -77,11 +77,8 @@ export function ClosureGrid({ todayKey, closures, streak }: ClosureGridProps) {
     // food is already planned there. This grid is a record of days that closed,
     // and mixing a plan into the heat map would let an intention read as an
     // achievement. The outline exists only to say the square is a place you can
-    // go; days past the planning horizon get nothing and stay inert.
+    // go.
     if (key > todayKey) {
-      if (!isReachableDay(key, todayKey)) {
-        return { style: { backgroundColor: 'transparent' }, title: '' };
-      }
       return {
         style: {
           backgroundColor: 'transparent',
@@ -138,11 +135,6 @@ export function ClosureGrid({ todayKey, closures, streak }: ClosureGridProps) {
               {col.map(key => {
                 const { style, title } = cellStyle(key);
                 const cellClass = 'block aspect-square w-full rounded-[3.5px] lg:rounded-[5px]';
-
-                // Past the horizon there is nothing to open, so those stay inert.
-                if (!isReachableDay(key, todayKey)) {
-                  return <div key={key} className={cellClass} style={style} aria-hidden />;
-                }
 
                 return (
                   <Link
