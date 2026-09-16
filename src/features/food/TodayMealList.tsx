@@ -10,6 +10,9 @@
 // for four headings that only re-stated the order the list was already in.
 //
 // Time of day is still on screen, on each row, where it costs nothing.
+//
+// The section heading says "Logged", not "Today": this list renders for any day
+// the arrows can reach, which now includes days that haven't happened yet.
 
 import { useMemo } from 'react';
 import type { Food } from '@/db/schema';
@@ -45,7 +48,7 @@ export function TodayMealList({ dayKey }: { dayKey: string }) {
   return (
     <section>
       <div className="flex items-baseline justify-between gap-3 pb-1.5">
-        <h3 className={eyebrow}>Today</h3>
+        <h3 className={eyebrow}>Logged</h3>
         <span className="stat text-[11px] text-faint">
           {subtotal.toLocaleString()}
           {unknown > 0 && '+'} cal

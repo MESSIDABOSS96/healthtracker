@@ -1,9 +1,9 @@
 // src/features/day/DayScreen.tsx
-// One screen for any day, today or past. `/daily` and `/day/:dayKey` are both
-// thin wrappers over this, which is what makes stepping through days with the
-// arrows — and clicking a square in the closure grid — land somewhere that
-// looks the same every time. They used to be two separately-built screens that
-// drifted: only one of them had the ring.
+// One screen for any day — past, today, or planned. `/daily` and `/day/:dayKey`
+// are both thin wrappers over this, which is what makes stepping through days
+// with the arrows — and clicking a square in the closure grid — land somewhere
+// that looks the same every time. They used to be two separately-built screens
+// that drifted: only one of them had the ring.
 //
 // Layout is a single centred column at EVERY width — no desktop split. The ring
 // is the thing the app exists for, and putting anything beside it demotes it to
@@ -20,6 +20,13 @@
 // enters from that side — the gesture and the arrow are the same navigation,
 // not two features that happen to change the same URL.
 //
+// Forward now runs a week past today (see lib/dayRoutes). A future day is the
+// same screen with one card missing: you cannot weigh yourself on a day that
+// hasn't happened, and a future reading would quietly become the anchor of the
+// EMA trend and the goal projection, both of which read the LATEST weight and
+// neither of which is bounded by today. Everything else on the screen is a
+// statement about a day rather than about now, so it renders unchanged.
+//
 // Freeform entry used to be today-only, on the theory that the library chips
 // covered "forgot to log yesterday" without spending a parse. They don't: a new
 // account has an empty library, so a past day offered no way to log food at all
@@ -31,7 +38,7 @@
 import { useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
-import { stepDayPath, type DayNavState } from '@/lib/dayRoutes';
+import { isFutureDay, stepDayPath, type DayNavState } from '@/lib/dayRoutes';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ClosureRing } from '@/features/closure/ClosureRing';
 import { useDayClosure, useClosureStreak } from '@/features/closure/hooks';
@@ -52,6 +59,7 @@ interface DayScreenProps {
 
 export function DayScreen({ dayKey, todayKey }: DayScreenProps) {
   const isToday = dayKey === todayKey;
+  const isFuture = isFutureDay(dayKey, todayKey);
   const closure = useDayClosure(dayKey);
   // The streak is a live "right now" fact, so it only belongs on today's view —
   // showing it above a day in March would read as that day's streak.
@@ -69,7 +77,10 @@ export function DayScreen({ dayKey, todayKey }: DayScreenProps) {
     },
     [dayKey, todayKey, navigate],
   );
-  useDaySwipe(swipeRef, { onStep: step, canGoForward: !isToday });
+  useDaySwipe(swipeRef, {
+    onStep: step,
+    canGoForward: stepDayPath(dayKey, todayKey, 1) !== null,
+  });
 
   // Which way we arrived, read off history state rather than kept in a ref:
   // /daily and /day/:key are separate route components, so today → yesterday
@@ -121,7 +132,7 @@ export function DayScreen({ dayKey, todayKey }: DayScreenProps) {
           </CardContent>
         </Card>
 
-        <WeightCard dayKey={dayKey} />
+        {!isFuture && <WeightCard dayKey={dayKey} />}
       </motion.div>
     </div>
   );

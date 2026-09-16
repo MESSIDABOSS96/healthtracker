@@ -38,7 +38,7 @@ React 19 + Vite 7 + TypeScript + Dexie 4 (+ `useLiveQuery`) + Tailwind CSS 4 + `
 | Theming | `lib/theme.ts` + `styles/tokens.css` (`:root` light, `.dark` dark) + pre-paint script in `index.html` |
 | Demo fixture | `src/dev/seedDemo.ts` — `npm run dev:demo` (port 5174 = separate origin = separate IndexedDB) |
 | Screens | `/daily` and `/day/:dayKey` are both thin wrappers over `features/day/DayScreen` — one screen, so stepping days with the arrows or clicking a closure-grid square always lands somewhere identical. `/dashboard` (trends, lazy), `/settings` |
-| Day routing | `lib/dayRoutes.ts` — `dayPath()` is the single answer to "where does this day live" (today → `/daily`, else `/day/:key`). One URL per day. |
+| Day routing | `lib/dayRoutes.ts` — `dayPath()` is the single answer to "where does this day live" (today → `/daily`, else `/day/:key`). One URL per day. Forward runs `PLAN_AHEAD_DAYS` past today so tomorrow's food can be logged the night before; `stepDayPath` is the one gate the arrows, the swipe and the deep-link guard all ask. |
 | Backup | `export.svc.ts` / `import.svc.ts` — v2 envelope, current schemaVersion only on import |
 | **Sync** | `services/sync.svc.ts` (push/pull/realtime), `syncMeta.svc.ts` (change tracking), `auth.svc.ts` (email+password auth), `lib/supabase.ts` (client, null when unconfigured), `features/sync/useSync.ts` (lifecycle + hooks), `supabase/schema.sql` (run once) |
 

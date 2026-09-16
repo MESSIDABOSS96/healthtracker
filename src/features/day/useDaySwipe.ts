@@ -41,8 +41,8 @@ const EDGE_GUARD = 26;
  *  that a day is coming, not a page being dragged into place. */
 const FOLLOW = 0.5;
 const FOLLOW_MAX = 96;
-/** Pulling toward a day that doesn't exist yet: it gives, then stops. That's
- *  the answer "there is nothing here", delivered without a message. */
+/** Pulling past the far end of the range: it gives, then stops. That's the
+ *  answer "there is nothing here", delivered without a message. */
 const BLOCKED_FOLLOW = 0.16;
 const BLOCKED_MAX = 26;
 
@@ -51,7 +51,7 @@ const SETTLE = 'transform 260ms var(--ease-spring), opacity 200ms var(--ease-out
 interface DaySwipeOptions {
   /** delta is -1 (previous day) or +1 (next day). */
   onStep: (delta: -1 | 1) => void;
-  /** False on today — there is no forward. */
+  /** False at the far end of the range — today plus the planning horizon. */
   canGoForward: boolean;
 }
 

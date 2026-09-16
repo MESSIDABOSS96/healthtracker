@@ -17,7 +17,7 @@ import { Link } from 'react-router-dom';
 import type { DayClosure } from '@/services/closure.svc';
 import { addDays, keyToDate } from '@/lib/dayKey';
 import { Card, CardContent, CardHeader, CardMeta, CardTitle } from '@/components/ui/card';
-import { dayPath } from '@/lib/dayRoutes';
+import { dayPath, isReachableDay } from '@/lib/dayRoutes';
 import { focusRing } from '@/components/ui/styles';
 
 const WEEKS_WIDE = 26;
@@ -73,7 +73,23 @@ export function ClosureGrid({ todayKey, closures, streak }: ClosureGridProps) {
     const isToday = key === todayKey;
     const ring = isToday ? { outline: '1.5px solid var(--accent)', outlineOffset: '2px' } : {};
 
-    if (key > todayKey) return { style: { backgroundColor: 'transparent' }, title: '' };
+    // A future day is drawn as an empty outline, never filled — not even when
+    // food is already planned there. This grid is a record of days that closed,
+    // and mixing a plan into the heat map would let an intention read as an
+    // achievement. The outline exists only to say the square is a place you can
+    // go; days past the planning horizon get nothing and stay inert.
+    if (key > todayKey) {
+      if (!isReachableDay(key, todayKey)) {
+        return { style: { backgroundColor: 'transparent' }, title: '' };
+      }
+      return {
+        style: {
+          backgroundColor: 'transparent',
+          boxShadow: 'inset 0 0 0 1px var(--hairline)',
+        },
+        title: `${key} — plan ahead`,
+      };
+    }
 
     const c = closures.get(key);
     if (c?.closed) {
@@ -123,8 +139,8 @@ export function ClosureGrid({ todayKey, closures, streak }: ClosureGridProps) {
                 const { style, title } = cellStyle(key);
                 const cellClass = 'block aspect-square w-full rounded-[3.5px] lg:rounded-[5px]';
 
-                // Future days aren't places you can go, so they stay inert.
-                if (key > todayKey) {
+                // Past the horizon there is nothing to open, so those stay inert.
+                if (!isReachableDay(key, todayKey)) {
                   return <div key={key} className={cellClass} style={style} aria-hidden />;
                 }
 
